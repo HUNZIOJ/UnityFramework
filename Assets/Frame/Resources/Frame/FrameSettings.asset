@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 204021ef8ad5237428897df0e6ce2b02, type: 3}
+  m_Name: FrameSettings
+  m_EditorClassIdentifier: 
+  autoCreateGameEntry: 1
+  dontDestroyOnLoad: 1
+  runInBackground: 1
+  targetFrameRate: -1
+  enableLogs: 1
+  minimumLogLevel: 2
+  enableEventBus: 1
+  enableTimerService: 1
+  enablePoolService: 1
+  enableAssetService: 1
+  enableSceneService: 1
+  enableUIService: 1
+  enableAudioService: 1
+  enableTweenService: 1
+  enableSaveService: 1
+  enableConfigService: 1
+  enableInputService: 1
+  enableHttpService: 1
+  enableLocalizationService: 1
+  uiRootName: UIRoot
+  uiReferenceWidth: 1920
+  uiReferenceHeight: 1080
+  uiMatchWidthOrHeight: 0.5
+  audioSourcePoolSize: 16
+  saveFolderName: Saves
+  defaultGameObjectPoolMaxSize: 128

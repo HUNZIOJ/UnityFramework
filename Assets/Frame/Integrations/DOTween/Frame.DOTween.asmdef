@@ -1,0 +1,16 @@
+{
+  "name": "Frame.DOTween",
+  "rootNamespace": "Frame.DOTween",
+  "references": [
+    "Frame.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
