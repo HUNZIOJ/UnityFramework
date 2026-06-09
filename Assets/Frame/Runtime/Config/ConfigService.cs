@@ -14,6 +14,7 @@ namespace Frame.Config
 
         protected override void OnInitialize()
         {
+            providers.Add(new ResourcesScriptableConfigProvider());
             providers.Add(new ResourcesJsonConfigProvider());
             Context.Services.Register<IConfigService>(this);
             Context.Services.Register(this);

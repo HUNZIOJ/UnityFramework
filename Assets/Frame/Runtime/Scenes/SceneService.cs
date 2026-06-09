@@ -1,4 +1,4 @@
-using System.Collections;
+using Cysharp.Threading.Tasks;
 using Frame.Core;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -48,7 +48,7 @@ namespace Frame.Scenes
 
             operation.allowSceneActivation = args.ActivateOnLoad;
             SceneLoadOperation wrapped = new SceneLoadOperation(args.SceneName, operation);
-            Context.Coroutines.Run(TrackLoad(args, operation));
+            TrackLoadAsync(args, operation).Forget();
             return wrapped;
         }
 
@@ -62,7 +62,7 @@ namespace Frame.Scenes
             return SceneManager.UnloadSceneAsync(sceneName);
         }
 
-        private IEnumerator TrackLoad(SceneLoadArgs args, AsyncOperation operation)
+        private async UniTaskVoid TrackLoadAsync(SceneLoadArgs args, AsyncOperation operation)
         {
             while (!operation.isDone)
             {
@@ -71,7 +71,7 @@ namespace Frame.Scenes
                     args.Progress(operation.progress);
                 }
 
-                yield return null;
+                await UniTask.Yield(PlayerLoopTiming.Update);
             }
 
             if (args.Progress != null)

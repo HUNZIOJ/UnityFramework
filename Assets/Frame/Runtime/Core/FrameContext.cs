@@ -4,13 +4,12 @@ namespace Frame.Core
 {
     public sealed class FrameContext
     {
-        public FrameContext(GameEntry entry, FrameSettings settings, ServiceRegistry services, Transform root, CoroutineRunner coroutines)
+        public FrameContext(GameEntry entry, FrameSettings settings, ServiceRegistry services, Transform root)
         {
             Entry = entry;
             Settings = settings;
             Services = services;
             Root = root;
-            Coroutines = coroutines;
         }
 
         public GameEntry Entry
@@ -32,12 +31,6 @@ namespace Frame.Core
         }
 
         public Transform Root
-        {
-            get;
-            private set;
-        }
-
-        public CoroutineRunner Coroutines
         {
             get;
             private set;

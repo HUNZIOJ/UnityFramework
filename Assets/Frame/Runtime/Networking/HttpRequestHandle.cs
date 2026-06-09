@@ -53,6 +53,14 @@ namespace Frame.Networking
             }
         }
 
+        internal void Detach(UnityWebRequest request)
+        {
+            if (ReferenceEquals(webRequest, request))
+            {
+                webRequest = null;
+            }
+        }
+
         internal void Complete(HttpResponse response)
         {
             Response = response;

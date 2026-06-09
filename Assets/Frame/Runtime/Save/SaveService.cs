@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System;
 using Frame.Core;
 using Frame.Utilities;
 using UnityEngine;
@@ -39,6 +40,7 @@ namespace Frame.Save
 
         public bool Exists(string slot)
         {
+            ValidateSlot(slot);
             return File.Exists(GetPath(slot));
         }
 
@@ -74,6 +76,7 @@ namespace Frame.Save
 
         public bool TryLoad<TData>(string slot, out TData data)
         {
+            ValidateSlot(slot);
             string path = GetPath(slot);
             if (TryLoadFromPath(path, out data))
             {
@@ -92,6 +95,7 @@ namespace Frame.Save
 
         public bool Delete(string slot)
         {
+            ValidateSlot(slot);
             string path = GetPath(slot);
             string backupPath = path + BackupExtension;
             bool deleted = false;
@@ -136,6 +140,7 @@ namespace Frame.Save
 
         public string GetPath(string slot)
         {
+            ValidateSlot(slot);
             string fileName = FramePathUtility.SanitizeFileName(slot) + ".json";
             return Path.Combine(saveRoot, fileName);
         }
@@ -165,6 +170,14 @@ namespace Frame.Save
                 FrameLog.Exception(exception);
                 data = default(TData);
                 return false;
+            }
+        }
+
+        private static void ValidateSlot(string slot)
+        {
+            if (string.IsNullOrWhiteSpace(slot))
+            {
+                throw new ArgumentException("Save slot is required.", "slot");
             }
         }
     }

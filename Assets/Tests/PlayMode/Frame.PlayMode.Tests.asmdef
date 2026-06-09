@@ -1,0 +1,20 @@
+{
+  "name": "Frame.PlayMode.Tests",
+  "rootNamespace": "Frame.Tests.PlayMode",
+  "references": [
+    "Frame.Runtime",
+    "Frame.DOTween"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

@@ -1,7 +1,7 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using Cysharp.Threading.Tasks;
 using Frame.Core;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -29,17 +29,17 @@ namespace Frame.Networking
         public HttpRequestHandle Send(HttpRequest request, Action<HttpResponse> completed)
         {
             HttpRequestHandle handle = new HttpRequestHandle();
-            Context.Coroutines.Run(SendRoutine(request, completed, handle));
+            SendAsync(request, completed, handle).Forget();
             return handle;
         }
 
-        private IEnumerator SendRoutine(HttpRequest request, Action<HttpResponse> completed, HttpRequestHandle handle)
+        private async UniTaskVoid SendAsync(HttpRequest request, Action<HttpResponse> completed, HttpRequestHandle handle)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Url))
             {
                 Complete(handle, completed, new HttpResponse { Success = false, Error = "Url is empty." });
 
-                yield break;
+                return;
             }
 
             int attempts = Math.Max(0, request.Retries) + 1;
@@ -54,25 +54,44 @@ namespace Frame.Networking
                 using (UnityWebRequest webRequest = CreateUnityRequest(request))
                 {
                     handle.Attach(webRequest);
-                    webRequest.timeout = Math.Max(1, request.TimeoutSeconds);
-                    if (request.Headers != null)
+                    bool shouldSend = true;
+
+                    try
                     {
-                        foreach (KeyValuePair<string, string> header in request.Headers)
+                        webRequest.timeout = Math.Max(1, request.TimeoutSeconds);
+                        if (request.Headers != null)
                         {
-                            webRequest.SetRequestHeader(header.Key, header.Value);
+                            foreach (KeyValuePair<string, string> header in request.Headers)
+                            {
+                                if (!string.IsNullOrWhiteSpace(header.Key))
+                                {
+                                    webRequest.SetRequestHeader(header.Key, header.Value);
+                                }
+                            }
                         }
                     }
-
-                    yield return webRequest.SendWebRequest();
-
-                    lastResponse = new HttpResponse
+                    catch (Exception exception)
                     {
-                        Success = webRequest.result == UnityWebRequest.Result.Success,
-                        StatusCode = webRequest.responseCode,
-                        Text = webRequest.downloadHandler == null ? null : webRequest.downloadHandler.text,
-                        Data = webRequest.downloadHandler == null ? null : webRequest.downloadHandler.data,
-                        Error = webRequest.error
-                    };
+                        FrameLog.Exception(exception);
+                        shouldSend = false;
+                        lastResponse = new HttpResponse { Success = false, Error = exception.Message };
+                    }
+
+                    if (shouldSend)
+                    {
+                        await webRequest.SendWebRequest().ToUniTask();
+
+                        lastResponse = new HttpResponse
+                        {
+                            Success = webRequest.result == UnityWebRequest.Result.Success,
+                            StatusCode = webRequest.responseCode,
+                            Text = webRequest.downloadHandler == null ? null : webRequest.downloadHandler.text,
+                            Data = webRequest.downloadHandler == null ? null : webRequest.downloadHandler.data,
+                            Error = webRequest.error
+                        };
+                    }
+
+                    handle.Detach(webRequest);
 
                     if (lastResponse.Success)
                     {
@@ -82,7 +101,8 @@ namespace Frame.Networking
 
                 if (i < attempts - 1 && request.RetryDelaySeconds > 0f)
                 {
-                    yield return new WaitForSecondsRealtime(request.RetryDelaySeconds);
+                    int delayMilliseconds = Mathf.CeilToInt(request.RetryDelaySeconds * 1000f);
+                    await UniTask.Delay(delayMilliseconds, DelayType.UnscaledDeltaTime, PlayerLoopTiming.Update);
                 }
             }
 
@@ -128,7 +148,14 @@ namespace Frame.Networking
 
             if (completed != null)
             {
-                completed(response);
+                try
+                {
+                    completed(response);
+                }
+                catch (Exception exception)
+                {
+                    FrameLog.Exception(exception);
+                }
             }
         }
     }

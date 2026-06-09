@@ -33,8 +33,25 @@ namespace Frame.Core
             }
 
             context = frameContext;
-            OnInitialize();
-            IsInitialized = true;
+            try
+            {
+                OnInitialize();
+                IsInitialized = true;
+            }
+            catch
+            {
+                try
+                {
+                    OnShutdown();
+                }
+                finally
+                {
+                    context = null;
+                    IsInitialized = false;
+                }
+
+                throw;
+            }
         }
 
         public virtual void Start()

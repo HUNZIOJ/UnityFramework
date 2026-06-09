@@ -83,23 +83,25 @@ namespace Frame.Core
             services = new ServiceRegistry();
             modules = new ModuleManager();
 
-            CoroutineRunner coroutines = entry.GetComponent<CoroutineRunner>();
-            if (coroutines == null)
-            {
-                coroutines = entry.gameObject.AddComponent<CoroutineRunner>();
-            }
-
-            context = new FrameContext(entry, settings, services, entry.transform, coroutines);
+            context = new FrameContext(entry, settings, services, entry.transform);
             services.Register(settings);
             services.Register(services);
-            services.Register(coroutines);
 
-            RegisterDefaultModules(settings);
-            RegisterInstalledModules(settings);
-            modules.InitializeAll(context);
+            try
+            {
+                RegisterDefaultModules(settings);
+                RegisterInstalledModules(settings);
+                modules.InitializeAll(context);
 
-            IsInitialized = true;
-            FrameLog.Info("Framework initialized.");
+                IsInitialized = true;
+                FrameLog.Info("Framework initialized.");
+            }
+            catch (Exception exception)
+            {
+                FrameLog.Exception(exception);
+                CleanupFailedInitialization();
+                throw new FrameException("Framework initialization failed.", exception);
+            }
         }
 
         public static void Start()
@@ -314,6 +316,25 @@ namespace Frame.Core
                 FrameLog.Exception(exception);
                 return Array.Empty<Type>();
             }
+        }
+
+        private static void CleanupFailedInitialization()
+        {
+            if (modules != null)
+            {
+                modules.ShutdownAll();
+            }
+
+            if (services != null)
+            {
+                services.Clear();
+            }
+
+            isStarted = false;
+            IsInitialized = false;
+            context = null;
+            modules = null;
+            services = null;
         }
     }
 }

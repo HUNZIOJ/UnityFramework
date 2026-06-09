@@ -1,4 +1,6 @@
+using Frame.Audio;
 using UnityEngine;
+using UnityEngine.Audio;
 
 namespace Frame.Core
 {
@@ -40,6 +42,16 @@ namespace Frame.Core
 
         [Header("Audio")]
         [SerializeField] private int audioSourcePoolSize = 16;
+        [SerializeField] private AudioMixerGroup masterAudioMixerGroup = null;
+        [SerializeField] private AudioMixerGroup musicAudioMixerGroup = null;
+        [SerializeField] private AudioMixerGroup sfxAudioMixerGroup = null;
+        [SerializeField] private AudioMixerGroup uiAudioMixerGroup = null;
+        [SerializeField] private AudioMixerGroup ambientAudioMixerGroup = null;
+        [SerializeField] private string masterAudioMixerVolumeParameter = "MasterVolume";
+        [SerializeField] private string musicAudioMixerVolumeParameter = "MusicVolume";
+        [SerializeField] private string sfxAudioMixerVolumeParameter = "SfxVolume";
+        [SerializeField] private string uiAudioMixerVolumeParameter = "UIVolume";
+        [SerializeField] private string ambientAudioMixerVolumeParameter = "AmbientVolume";
 
         [Header("Save")]
         [SerializeField] private string saveFolderName = "Saves";
@@ -160,6 +172,46 @@ namespace Frame.Core
         public int AudioSourcePoolSize
         {
             get { return Mathf.Max(1, audioSourcePoolSize); }
+        }
+
+        public AudioMixerGroup GetAudioMixerGroup(AudioCategory category)
+        {
+            AudioMixerGroup group = GetAssignedAudioMixerGroup(category);
+            return group != null ? group : masterAudioMixerGroup;
+        }
+
+        public AudioMixerGroup GetAssignedAudioMixerGroup(AudioCategory category)
+        {
+            switch (category)
+            {
+                case AudioCategory.Music:
+                    return musicAudioMixerGroup;
+                case AudioCategory.Sfx:
+                    return sfxAudioMixerGroup;
+                case AudioCategory.UI:
+                    return uiAudioMixerGroup;
+                case AudioCategory.Ambient:
+                    return ambientAudioMixerGroup;
+                default:
+                    return masterAudioMixerGroup;
+            }
+        }
+
+        public string GetAudioMixerVolumeParameter(AudioCategory category)
+        {
+            switch (category)
+            {
+                case AudioCategory.Music:
+                    return musicAudioMixerVolumeParameter;
+                case AudioCategory.Sfx:
+                    return sfxAudioMixerVolumeParameter;
+                case AudioCategory.UI:
+                    return uiAudioMixerVolumeParameter;
+                case AudioCategory.Ambient:
+                    return ambientAudioMixerVolumeParameter;
+                default:
+                    return masterAudioMixerVolumeParameter;
+            }
         }
 
         public string SaveFolderName

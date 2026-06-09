@@ -3,7 +3,8 @@
   "rootNamespace": "Frame",
   "references": [
     "UnityEngine.UI",
-    "Unity.InputSystem"
+    "Unity.InputSystem",
+    "UniTask"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

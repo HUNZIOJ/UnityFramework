@@ -10,6 +10,9 @@ namespace Frame.Localization
         [SerializeField] private string locale = "en";
         [SerializeField] private List<Entry> entries = new List<Entry>();
 
+        private Dictionary<string, string> lookup;
+        private bool lookupDirty = true;
+
         public string Locale
         {
             get { return string.IsNullOrWhiteSpace(locale) ? "en" : locale; }
@@ -17,17 +20,56 @@ namespace Frame.Localization
 
         public bool TryGet(string key, out string value)
         {
-            for (int i = 0; i < entries.Count; i++)
+            if (string.IsNullOrWhiteSpace(key))
             {
-                if (entries[i].Key == key)
-                {
-                    value = entries[i].Value;
-                    return true;
-                }
+                value = null;
+                return false;
             }
 
-            value = null;
-            return false;
+            EnsureLookup();
+            return lookup.TryGetValue(key, out value);
+        }
+
+        private void OnEnable()
+        {
+            lookupDirty = true;
+        }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            lookupDirty = true;
+        }
+#endif
+
+        private void EnsureLookup()
+        {
+            if (!lookupDirty && lookup != null)
+            {
+                return;
+            }
+
+            if (lookup == null)
+            {
+                lookup = new Dictionary<string, string>();
+            }
+            else
+            {
+                lookup.Clear();
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                Entry entry = entries[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.Key))
+                {
+                    continue;
+                }
+
+                lookup[entry.Key] = entry.Value;
+            }
+
+            lookupDirty = false;
         }
 
         [Serializable]

@@ -40,8 +40,9 @@ namespace Frame.Assets
         public void Dispose()
         {
             IAssetService service = owner;
-            if (service == null)
+            if (service == null || Asset == null || string.IsNullOrWhiteSpace(Path))
             {
+                owner = null;
                 return;
             }
 

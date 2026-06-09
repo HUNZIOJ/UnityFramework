@@ -1,6 +1,6 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using Frame.Core;
 using Frame.Utilities;
 using UnityEngine;
@@ -46,13 +46,14 @@ namespace Frame.Assets
                 cache[path] = asset;
             }
 
-            AddRef(path);
             T typedAsset = asset as T;
             if (typedAsset == null)
             {
                 FrameLog.Warning("Resources asset type mismatch: " + path + " expected=" + typeof(T).Name);
+                return new AssetHandle<T>(this, path, null);
             }
 
+            AddRef(path);
             return new AssetHandle<T>(this, path, typedAsset);
         }
 
@@ -64,18 +65,23 @@ namespace Frame.Assets
             Object cached;
             if (cache.TryGetValue(path, out cached) && cached != null)
             {
-                AddRef(path);
-                AssetHandle<T> handle = new AssetHandle<T>(this, path, cached as T);
-                request.Complete(handle);
-                if (completed != null)
+                T typedCached = cached as T;
+                if (typedCached == null)
                 {
-                    completed(handle);
+                    FrameLog.Warning("Resources asset type mismatch async: " + path + " expected=" + typeof(T).Name);
+                    AssetHandle<T> empty = new AssetHandle<T>(this, path, null);
+                    CompleteRequest(request, empty, completed);
+                    return request;
                 }
+
+                AddRef(path);
+                AssetHandle<T> handle = new AssetHandle<T>(this, path, typedCached);
+                CompleteRequest(request, handle, completed);
 
                 return request;
             }
 
-            Context.Coroutines.Run(LoadAsyncRoutine(path, request, completed));
+            LoadAsyncTask(path, request, completed).Forget();
             return request;
         }
 
@@ -125,22 +131,18 @@ namespace Frame.Assets
             Resources.UnloadUnusedAssets();
         }
 
-        private IEnumerator LoadAsyncRoutine<T>(string path, AssetRequest<T> request, Action<AssetHandle<T>> completed) where T : Object
+        private async UniTaskVoid LoadAsyncTask<T>(string path, AssetRequest<T> request, Action<AssetHandle<T>> completed) where T : Object
         {
             if (string.IsNullOrWhiteSpace(path))
             {
                 AssetHandle<T> empty = new AssetHandle<T>(this, path, null);
-                request.Complete(empty);
-                if (completed != null)
-                {
-                    completed(empty);
-                }
+                CompleteRequest(request, empty, completed);
 
-                yield break;
+                return;
             }
 
             ResourceRequest resourceRequest = Resources.LoadAsync<T>(path);
-            yield return resourceRequest;
+            await resourceRequest.ToUniTask();
 
             T asset = resourceRequest.asset as T;
             if (asset == null)
@@ -154,10 +156,22 @@ namespace Frame.Assets
             }
 
             AssetHandle<T> handle = new AssetHandle<T>(this, path, asset);
+            CompleteRequest(request, handle, completed);
+        }
+
+        private static void CompleteRequest<T>(AssetRequest<T> request, AssetHandle<T> handle, Action<AssetHandle<T>> completed) where T : Object
+        {
             request.Complete(handle);
             if (completed != null)
             {
-                completed(handle);
+                try
+                {
+                    completed(handle);
+                }
+                catch (Exception exception)
+                {
+                    FrameLog.Exception(exception);
+                }
             }
         }
 
