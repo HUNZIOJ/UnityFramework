@@ -24,16 +24,98 @@ namespace Frame.Tests.EditMode
             using (FrameTestFixture fixture = new FrameTestFixture())
             {
                 ConfigService service = fixture.Initialize(new ConfigService());
-                service.RegisterProvider(new MemoryConfigProvider(new ItemConfig
+                MemoryConfigProvider provider = new MemoryConfigProvider(new ItemConfig
                 {
                     Id = "memory",
                     Name = "Memory Item",
                     Power = 99
-                }));
+                });
+                service.RegisterProvider(provider);
 
                 ItemConfig config = service.Load<ItemConfig>("any");
 
                 Assert.AreEqual("memory", config.Id);
+                Assert.IsTrue(service.UnregisterProvider(provider));
+                Assert.IsFalse(service.UnregisterProvider(provider));
+            }
+        }
+
+        [Test]
+        public void ConfigService_CachesLoadedConfigsAndCanClearCache()
+        {
+            using (FrameTestFixture fixture = new FrameTestFixture())
+            {
+                ConfigService service = fixture.Initialize(new ConfigService());
+                MemoryConfigProvider provider = new MemoryConfigProvider(new ItemConfig
+                {
+                    Id = "cached",
+                    Name = "Cached Item",
+                    Power = 10
+                });
+                service.RegisterProvider(provider);
+
+                Assert.IsTrue(service.TryLoad("cached", out ItemConfig first));
+                Assert.IsTrue(service.TryLoad("cached", out ItemConfig second));
+                Assert.AreSame(first, second);
+                Assert.AreEqual(1, provider.LoadCount);
+
+                service.ClearCache();
+                Assert.IsTrue(service.TryLoad("cached", out ItemConfig third));
+                Assert.AreSame(first, third);
+                Assert.AreEqual(2, provider.LoadCount);
+
+                service.CacheEnabled = false;
+                ItemConfig ignored;
+                Assert.IsTrue(service.TryLoad("cached", out ignored));
+                Assert.IsTrue(service.TryLoad("cached", out ignored));
+                Assert.AreEqual(4, provider.LoadCount);
+            }
+        }
+
+        [Test]
+        public void ConfigService_RejectsInvalidValidatedConfig()
+        {
+            using (FrameTestFixture fixture = new FrameTestFixture())
+            {
+                ConfigService service = fixture.Initialize(new ConfigService());
+                service.RegisterProvider(new MemoryConfigProvider(new ValidatedConfig()));
+
+                LogAssert.Expect(LogType.Warning, "[Frame] Config validation failed: invalid type=ValidatedConfig error=Id is required.");
+                Assert.IsFalse(service.TryLoad("invalid", out ValidatedConfig config));
+                Assert.IsNull(config);
+            }
+        }
+
+        [Test]
+        public void RuntimeJsonConfigProvider_OverridesResourcesAndInvalidatesCache()
+        {
+            using (FrameTestFixture fixture = new FrameTestFixture())
+            {
+                ConfigService service = fixture.Initialize(new ConfigService());
+                RuntimeJsonConfigProvider provider = new RuntimeJsonConfigProvider();
+                provider.SetJson("FrameTests/item.json", "{\"Id\":\"remote_001\",\"Name\":\"Remote Sword\",\"Power\":20}");
+                service.RegisterProvider(provider);
+
+                Assert.IsTrue(provider.Contains("FrameTests/item"));
+                Assert.IsTrue(service.TryLoad("FrameTests/item", out ItemConfig first));
+                Assert.AreEqual("remote_001", first.Id);
+                Assert.AreEqual(20, first.Power);
+
+                provider.Set("FrameTests/item", new ItemConfig
+                {
+                    Id = "remote_002",
+                    Name = "Remote Sword V2",
+                    Power = 30
+                });
+
+                Assert.IsTrue(service.TryLoad("FrameTests/item", out ItemConfig second));
+                Assert.AreEqual("remote_002", second.Id);
+                Assert.AreEqual(30, second.Power);
+
+                Assert.IsTrue(provider.Remove("FrameTests/item"));
+                Assert.IsTrue(service.TryLoad("FrameTests/item", out ItemConfig fallback));
+                Assert.AreEqual("item_001", fallback.Id);
+                Assert.AreEqual(12, fallback.Power);
             }
         }
 
@@ -90,17 +172,37 @@ namespace Frame.Tests.EditMode
             public int Power;
         }
 
+        public sealed class ValidatedConfig : IConfigValidator
+        {
+            public string Id;
+
+            public bool Validate(out string error)
+            {
+                if (string.IsNullOrWhiteSpace(Id))
+                {
+                    error = "Id is required.";
+                    return false;
+                }
+
+                error = null;
+                return true;
+            }
+        }
+
         private sealed class MemoryConfigProvider : IConfigProvider
         {
-            private readonly ItemConfig config;
+            private readonly object config;
 
-            public MemoryConfigProvider(ItemConfig config)
+            public MemoryConfigProvider(object config)
             {
                 this.config = config;
             }
 
+            public int LoadCount { get; private set; }
+
             public bool TryLoad<TConfig>(string key, out TConfig loaded) where TConfig : class
             {
+                LoadCount++;
                 loaded = config as TConfig;
                 return loaded != null;
             }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Frame.Networking
@@ -11,6 +12,6 @@ namespace Frame.Networking
         public int TimeoutSeconds = 15;
         public int Retries = 0;
         public float RetryDelaySeconds = 0.25f;
-        public Dictionary<string, string> Headers = new Dictionary<string, string>();
+        public Dictionary<string, string> Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 }

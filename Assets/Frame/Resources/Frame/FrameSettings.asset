@@ -17,9 +17,15 @@ MonoBehaviour:
   runInBackground: 1
   targetFrameRate: -1
   enableLogs: 1
-  minimumLogLevel: 2
+  minimumLogLevel: 0
+  enableRuntimeDiagnosticsOverlay: 1
+  runtimeDiagnosticsOverlayVisibleOnStart: 1
+  runtimeDiagnosticsOverlayToggleKey: 96
+  enableDiagnosticsService: 1
   enableEventBus: 1
+  enableLifecycleService: 1
   enableTimerService: 1
+  enablePreferencesService: 1
   enablePoolService: 1
   enableAssetService: 1
   enableSceneService: 1
@@ -31,10 +37,30 @@ MonoBehaviour:
   enableInputService: 1
   enableHttpService: 1
   enableLocalizationService: 1
+  assetServiceBackend: 0
+  yooAssetPackageName: DefaultPackage
+  yooAssetPlayMode: 0
+  yooAssetEditorPackageRoot: ''
+  yooAssetBuiltinPackageRoot: ''
+  yooAssetDefaultHostServer: ''
+  yooAssetFallbackHostServer: ''
+  yooAssetDownloadMaxConcurrency: 5
+  yooAssetDownloadMaxRequestPerFrame: 1
+  yooAssetDownloadWatchdogTimeout: 10
   uiRootName: UIRoot
   uiReferenceWidth: 1920
   uiReferenceHeight: 1080
   uiMatchWidthOrHeight: 0.5
   audioSourcePoolSize: 16
+  masterAudioMixerGroup: {fileID: 0}
+  musicAudioMixerGroup: {fileID: 0}
+  sfxAudioMixerGroup: {fileID: 0}
+  uiAudioMixerGroup: {fileID: 0}
+  ambientAudioMixerGroup: {fileID: 0}
+  masterAudioMixerVolumeParameter: MasterVolume
+  musicAudioMixerVolumeParameter: MusicVolume
+  sfxAudioMixerVolumeParameter: SfxVolume
+  uiAudioMixerVolumeParameter: UIVolume
+  ambientAudioMixerVolumeParameter: AmbientVolume
   saveFolderName: Saves
   defaultGameObjectPoolMaxSize: 128

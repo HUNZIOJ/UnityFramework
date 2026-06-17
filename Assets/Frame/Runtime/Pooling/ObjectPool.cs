@@ -11,6 +11,11 @@ namespace Frame.Pooling
         private readonly Action<T> onDestroy;
         private readonly Stack<T> inactive = new Stack<T>();
         private readonly HashSet<T> inPool = new HashSet<T>();
+        private int countActive;
+        private int createdCount;
+        private int destroyedCount;
+        private int getCount;
+        private int releaseCount;
 
         public ObjectPool(Func<T> factory, Action<T> onGet = null, Action<T> onRelease = null, Action<T> onDestroy = null, int maxSize = 128)
         {
@@ -37,6 +42,11 @@ namespace Frame.Pooling
             get { return inactive.Count; }
         }
 
+        public int CountActive
+        {
+            get { return countActive; }
+        }
+
         public T Get()
         {
             T item;
@@ -48,8 +58,11 @@ namespace Frame.Pooling
             else
             {
                 item = factory();
+                createdCount++;
             }
 
+            countActive++;
+            getCount++;
             if (onGet != null)
             {
                 onGet(item);
@@ -71,6 +84,12 @@ namespace Frame.Pooling
                 resettable.ResetForPool();
             }
 
+            if (countActive > 0)
+            {
+                countActive--;
+            }
+
+            releaseCount++;
             if (onRelease != null)
             {
                 onRelease(item);
@@ -83,6 +102,7 @@ namespace Frame.Pooling
                     onDestroy(item);
                 }
 
+                destroyedCount++;
                 return;
             }
 
@@ -94,8 +114,26 @@ namespace Frame.Pooling
         {
             for (int i = 0; i < count; i++)
             {
-                Release(factory());
+                T item = factory();
+                createdCount++;
+                Release(item);
             }
+        }
+
+        public PoolStats GetStats(string key = null)
+        {
+            return new PoolStats
+            {
+                Key = key,
+                MaxSize = MaxSize,
+                CountActive = countActive,
+                CountInactive = CountInactive,
+                CountTotal = countActive + CountInactive,
+                CreatedCount = createdCount,
+                DestroyedCount = destroyedCount,
+                GetCount = getCount,
+                ReleaseCount = releaseCount
+            };
         }
 
         public void Clear()
@@ -105,7 +143,12 @@ namespace Frame.Pooling
                 while (inactive.Count > 0)
                 {
                     onDestroy(inactive.Pop());
+                    destroyedCount++;
                 }
+            }
+            else
+            {
+                destroyedCount += inactive.Count;
             }
 
             inactive.Clear();

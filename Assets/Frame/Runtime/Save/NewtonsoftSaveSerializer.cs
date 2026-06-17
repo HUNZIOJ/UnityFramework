@@ -4,7 +4,7 @@ using Newtonsoft.Json.Serialization;
 
 namespace Frame.Save
 {
-    public sealed class NewtonsoftSaveSerializer : ISaveSerializer
+    public sealed class NewtonsoftSaveSerializer : TextSaveSerializer
     {
         private readonly JsonSerializerSettings settings;
 
@@ -18,12 +18,17 @@ namespace Frame.Save
             this.settings = settings == null ? CreateDefaultSettings() : settings;
         }
 
-        public string Serialize<TData>(TData data)
+        public override string FileExtension
+        {
+            get { return ".json"; }
+        }
+
+        protected override string SerializeToText<TData>(TData data)
         {
             return JsonConvert.SerializeObject(data, Formatting.Indented, settings);
         }
 
-        public TData Deserialize<TData>(string text)
+        protected override TData DeserializeFromText<TData>(string text)
         {
             return JsonConvert.DeserializeObject<TData>(text, settings);
         }

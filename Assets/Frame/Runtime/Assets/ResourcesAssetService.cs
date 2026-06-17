@@ -70,7 +70,7 @@ namespace Frame.Assets
                 {
                     FrameLog.Warning("Resources asset type mismatch async: " + path + " expected=" + typeof(T).Name);
                     AssetHandle<T> empty = new AssetHandle<T>(this, path, null);
-                    CompleteRequest(request, empty, completed);
+                    CompleteRequest(request, empty, completed, "Resources asset type mismatch: " + path);
                     return request;
                 }
 
@@ -94,8 +94,60 @@ namespace Frame.Assets
             }
 
             GameObject instance = Object.Instantiate(handle.Asset, parent, worldPositionStays);
-            handle.Release();
+            if (instance == null)
+            {
+                handle.Release();
+                return null;
+            }
+
+            AssetInstanceLease lease = instance.GetComponent<AssetInstanceLease>();
+            if (lease == null)
+            {
+                lease = instance.AddComponent<AssetInstanceLease>();
+            }
+
+            lease.Bind(handle);
             return instance;
+        }
+
+        public bool IsLoaded(string path)
+        {
+            path = FramePathUtility.NormalizeResourcesPath(path);
+            Object asset;
+            return cache.TryGetValue(path, out asset) && asset != null;
+        }
+
+        public int GetReferenceCount(string path)
+        {
+            path = FramePathUtility.NormalizeResourcesPath(path);
+            int count;
+            return refCounts.TryGetValue(path, out count) ? count : 0;
+        }
+
+        public List<AssetStats> GetLoadedAssetStats()
+        {
+            List<AssetStats> stats = new List<AssetStats>();
+            foreach (KeyValuePair<string, Object> pair in cache)
+            {
+                Object asset = pair.Value;
+                if (asset == null)
+                {
+                    continue;
+                }
+
+                int count;
+                refCounts.TryGetValue(pair.Key, out count);
+                stats.Add(new AssetStats
+                {
+                    Path = pair.Key,
+                    TypeName = asset.GetType().Name,
+                    ReferenceCount = count,
+                    IsLoaded = true
+                });
+            }
+
+            stats.Sort((left, right) => string.CompareOrdinal(left.Path, right.Path));
+            return stats;
         }
 
         public void Release(string path)
@@ -119,6 +171,12 @@ namespace Frame.Assets
             }
         }
 
+        public void ReleaseAll()
+        {
+            refCounts.Clear();
+            cache.Clear();
+        }
+
         public void UnloadUnusedAssets()
         {
             Resources.UnloadUnusedAssets();
@@ -136,17 +194,45 @@ namespace Frame.Assets
             if (string.IsNullOrWhiteSpace(path))
             {
                 AssetHandle<T> empty = new AssetHandle<T>(this, path, null);
-                CompleteRequest(request, empty, completed);
+                CompleteRequest(request, empty, completed, "Resources path is empty.");
 
                 return;
             }
 
+            await UniTask.Yield(PlayerLoopTiming.Update);
+            if (request.IsCanceled)
+            {
+                AssetHandle<T> canceled = new AssetHandle<T>(this, path, null);
+                CompleteRequest(request, canceled, completed, "Request canceled.");
+                return;
+            }
+
             ResourceRequest resourceRequest = Resources.LoadAsync<T>(path);
-            await resourceRequest.ToUniTask();
+            while (!resourceRequest.isDone)
+            {
+                request.SetProgress(resourceRequest.progress);
+                if (request.IsCanceled)
+                {
+                    AssetHandle<T> canceled = new AssetHandle<T>(this, path, null);
+                    CompleteRequest(request, canceled, completed, "Request canceled.");
+                    return;
+                }
+
+                await UniTask.Yield(PlayerLoopTiming.Update);
+            }
+
+            if (request.IsCanceled)
+            {
+                AssetHandle<T> canceled = new AssetHandle<T>(this, path, null);
+                CompleteRequest(request, canceled, completed, "Request canceled.");
+                return;
+            }
 
             T asset = resourceRequest.asset as T;
+            string error = null;
             if (asset == null)
             {
+                error = "Resources asset not found: " + path;
                 FrameLog.Warning("Resources asset not found async: " + path + " type=" + typeof(T).Name);
             }
             else
@@ -156,12 +242,12 @@ namespace Frame.Assets
             }
 
             AssetHandle<T> handle = new AssetHandle<T>(this, path, asset);
-            CompleteRequest(request, handle, completed);
+            CompleteRequest(request, handle, completed, error);
         }
 
-        private static void CompleteRequest<T>(AssetRequest<T> request, AssetHandle<T> handle, Action<AssetHandle<T>> completed) where T : Object
+        private static void CompleteRequest<T>(AssetRequest<T> request, AssetHandle<T> handle, Action<AssetHandle<T>> completed, string error = null) where T : Object
         {
-            request.Complete(handle);
+            request.Complete(handle, error);
             if (completed != null)
             {
                 try

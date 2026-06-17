@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Frame.Pooling
@@ -11,5 +12,13 @@ namespace Frame.Pooling
         GameObject Spawn(string key, Transform parent = null);
 
         void Despawn(string key, GameObject instance);
+
+        PoolStats GetGameObjectPoolStats(string key);
+
+        List<PoolStats> GetAllGameObjectPoolStats();
+
+        void ClearGameObjectPool(string key);
+
+        void ClearAllGameObjectPools();
     }
 }

@@ -2,8 +2,10 @@ namespace Frame.Save
 {
     public interface ISaveSerializer
     {
-        string Serialize<TData>(TData data);
+        string FileExtension { get; }
 
-        TData Deserialize<TData>(string text);
+        byte[] Serialize<TData>(TData data);
+
+        TData Deserialize<TData>(byte[] bytes);
     }
 }

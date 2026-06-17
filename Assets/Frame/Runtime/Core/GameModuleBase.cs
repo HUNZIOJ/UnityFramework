@@ -78,6 +78,10 @@ namespace Frame.Core
         {
         }
 
+        public virtual void OnApplicationQuit()
+        {
+        }
+
         public void Shutdown()
         {
             if (!IsInitialized)

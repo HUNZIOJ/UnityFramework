@@ -11,6 +11,11 @@ namespace Frame.Pooling
         private readonly int maxSize;
         private readonly Stack<GameObject> inactive = new Stack<GameObject>();
         private readonly HashSet<GameObject> inPool = new HashSet<GameObject>();
+        private int countActive;
+        private int createdCount;
+        private int destroyedCount;
+        private int getCount;
+        private int releaseCount;
 
         public GameObjectPool(GameObject prefab, Transform parent, int maxSize)
         {
@@ -24,10 +29,27 @@ namespace Frame.Pooling
             get { return inactive.Count; }
         }
 
+        public int CountActive
+        {
+            get { return countActive; }
+        }
+
         public GameObject Get(Transform newParent = null)
         {
-            GameObject instance = inactive.Count > 0 ? inactive.Pop() : Object.Instantiate(prefab);
+            GameObject instance;
+            if (inactive.Count > 0)
+            {
+                instance = inactive.Pop();
+            }
+            else
+            {
+                instance = Object.Instantiate(prefab);
+                createdCount++;
+            }
+
             inPool.Remove(instance);
+            countActive++;
+            getCount++;
             instance.transform.SetParent(newParent == null ? parent : newParent, false);
             instance.SetActive(true);
 
@@ -52,6 +74,12 @@ namespace Frame.Pooling
                 return;
             }
 
+            if (countActive > 0)
+            {
+                countActive--;
+            }
+
+            releaseCount++;
             IPoolable[] poolables = instance.GetComponentsInChildren<IPoolable>(true);
             for (int i = 0; i < poolables.Length; i++)
             {
@@ -61,6 +89,7 @@ namespace Frame.Pooling
             if (inactive.Count >= maxSize)
             {
                 Object.Destroy(instance);
+                destroyedCount++;
                 return;
             }
 
@@ -75,6 +104,7 @@ namespace Frame.Pooling
             for (int i = 0; i < count; i++)
             {
                 GameObject instance = Object.Instantiate(prefab, parent, false);
+                createdCount++;
                 instance.SetActive(false);
                 inactive.Push(instance);
                 inPool.Add(instance);
@@ -89,10 +119,27 @@ namespace Frame.Pooling
                 if (instance != null)
                 {
                     Object.Destroy(instance);
+                    destroyedCount++;
                 }
             }
 
             inPool.Clear();
+        }
+
+        public PoolStats GetStats(string key = null)
+        {
+            return new PoolStats
+            {
+                Key = key,
+                MaxSize = maxSize,
+                CountActive = countActive,
+                CountInactive = CountInactive,
+                CountTotal = countActive + CountInactive,
+                CreatedCount = createdCount,
+                DestroyedCount = destroyedCount,
+                GetCount = getCount,
+                ReleaseCount = releaseCount
+            };
         }
     }
 }

@@ -1,11 +1,14 @@
 using Frame.Assets;
 using Frame.Audio;
 using Frame.Config;
+using Frame.Diagnostics;
 using Frame.Events;
 using Frame.Input;
+using Frame.Lifecycle;
 using Frame.Localization;
 using Frame.Networking;
 using Frame.Pooling;
+using Frame.Preferences;
 using Frame.Save;
 using Frame.Scenes;
 using Frame.Timing;
@@ -94,6 +97,7 @@ namespace Frame.Core
                 modules.InitializeAll(context);
 
                 IsInitialized = true;
+                CreateRuntimeDiagnosticsOverlay(entry, settings);
                 FrameLog.Info("Framework initialized.");
             }
             catch (Exception exception)
@@ -155,6 +159,14 @@ namespace Frame.Core
             }
         }
 
+        public static void OnApplicationQuit()
+        {
+            if (IsInitialized)
+            {
+                modules.ApplicationQuitAll();
+            }
+        }
+
         public static void Shutdown()
         {
             if (!IsInitialized)
@@ -205,14 +217,29 @@ namespace Frame.Core
 
         private static void RegisterDefaultModules(FrameSettings settings)
         {
+            if (settings.EnableDiagnosticsService)
+            {
+                modules.Add(new DiagnosticsService());
+            }
+
             if (settings.EnableEventBus)
             {
                 modules.Add(new EventBus());
             }
 
+            if (settings.EnableLifecycleService)
+            {
+                modules.Add(new LifecycleService());
+            }
+
             if (settings.EnableTimerService)
             {
                 modules.Add(new TimerService());
+            }
+
+            if (settings.EnablePreferencesService)
+            {
+                modules.Add(new PreferencesService());
             }
 
             if (settings.EnablePoolService)
@@ -222,7 +249,10 @@ namespace Frame.Core
 
             if (settings.EnableAssetService)
             {
-                modules.Add(new ResourcesAssetService());
+                if (settings.AssetServiceBackend == AssetServiceBackend.Resources)
+                {
+                    modules.Add(new ResourcesAssetService());
+                }
             }
 
             if (settings.EnableSceneService)
@@ -294,6 +324,19 @@ namespace Frame.Core
                     }
                 }
             }
+        }
+
+        private static void CreateRuntimeDiagnosticsOverlay(GameEntry entry, FrameSettings settings)
+        {
+            if (entry == null || settings == null || !settings.EnableRuntimeDiagnosticsOverlay)
+            {
+                return;
+            }
+
+            RuntimeDiagnosticsOverlay.Ensure(
+                entry.transform,
+                settings.RuntimeDiagnosticsOverlayVisibleOnStart,
+                settings.RuntimeDiagnosticsOverlayToggleKey);
         }
 
         private static Type[] GetLoadableTypes(Assembly assembly)

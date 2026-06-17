@@ -1,5 +1,7 @@
 using Frame.Utilities;
+using System;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Frame.Assets
 {
@@ -26,6 +28,11 @@ namespace Frame.Assets
         public AssetHandle<T> Load(IAssetService assetService)
         {
             return assetService.Load<T>(ResourcesPath);
+        }
+
+        public AssetRequest<T> LoadAsync(IAssetService assetService, Action<AssetHandle<T>> completed = null)
+        {
+            return assetService.LoadAsync(ResourcesPath, completed);
         }
 
         public override string ToString()

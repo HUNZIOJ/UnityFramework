@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using System.Text.RegularExpressions;
 using Frame.Core;
+using Frame.Diagnostics;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -51,6 +53,7 @@ namespace Frame.Tests.EditMode
                 manager.LateUpdateAll(1f, 1f);
                 manager.PauseAll(true);
                 manager.FocusAll(false);
+                manager.ApplicationQuitAll();
                 manager.ShutdownAll();
             }
 
@@ -70,6 +73,8 @@ namespace Frame.Tests.EditMode
                 "Late.Pause",
                 "Early.Focus",
                 "Late.Focus",
+                "Early.Quit",
+                "Late.Quit",
                 "Late.Shutdown",
                 "Early.Shutdown"
             }, recorder.Items);
@@ -116,6 +121,25 @@ namespace Frame.Tests.EditMode
         }
 
         [Test]
+        public void Singleton_CreatesAndReleasesPlainInstance()
+        {
+            PlainSingleton.ReleaseInstance();
+            Assert.IsFalse(PlainSingleton.HasInstance);
+
+            PlainSingleton first = PlainSingleton.Instance;
+            PlainSingleton second = PlainSingleton.Instance;
+
+            Assert.AreSame(first, second);
+            Assert.IsTrue(PlainSingleton.HasInstance);
+            Assert.AreEqual(1, first.InitializeCount);
+
+            PlainSingleton.ReleaseInstance();
+
+            Assert.IsFalse(PlainSingleton.HasInstance);
+            Assert.AreEqual(1, first.ReleaseCount);
+        }
+
+        [Test]
         public void FrameSettings_LoadOrDefaultReturnsRuntimeInstanceWhenAssetMissing()
         {
             FrameSettings settings = FrameSettings.LoadOrDefault();
@@ -139,6 +163,165 @@ namespace Frame.Tests.EditMode
             Assert.DoesNotThrow(() => FrameLog.Warning("warning"));
             Assert.DoesNotThrow(() => FrameLog.Error("error"));
             Assert.DoesNotThrow(() => FrameLog.Exception(new Exception("test")));
+        }
+
+        [Test]
+        public void FrameLog_BuffersAndPublishesEntries()
+        {
+            FrameLog.Configure(null);
+            FrameLog.ClearBufferedEntries();
+            int previousMax = FrameLog.MaxBufferedEntries;
+            FrameLog.MaxBufferedEntries = 2;
+            FrameLogEntry received = null;
+            Action<FrameLogEntry> handler = entry => received = entry;
+            FrameLog.EntryWritten += handler;
+            try
+            {
+                FrameLog.Info("one");
+                FrameLog.Info("two");
+                FrameLog.Info("three");
+
+                Assert.AreEqual(2, FrameLog.BufferedEntries.Count);
+                Assert.AreEqual("two", FrameLog.BufferedEntries[0].Message);
+                Assert.AreEqual("three", FrameLog.BufferedEntries[1].Message);
+                Assert.AreEqual("three", received.Message);
+            }
+            finally
+            {
+                FrameLog.EntryWritten -= handler;
+                FrameLog.MaxBufferedEntries = previousMax;
+                FrameLog.ClearBufferedEntries();
+            }
+        }
+
+        [Test]
+        public void DiagnosticsService_CapturesLogCountsAndSnapshot()
+        {
+            FrameLog.Configure(null);
+            FrameLog.ClearBufferedEntries();
+            using (FrameTestFixture fixture = new FrameTestFixture())
+            {
+                DiagnosticsService service = fixture.Initialize(new DiagnosticsService());
+                int receivedCount = 0;
+                service.LogReceived += entry => receivedCount++;
+
+                LogAssert.Expect(LogType.Warning, "[Frame] diagnostics warning");
+                LogAssert.Expect(LogType.Error, "[Frame] diagnostics error");
+                FrameLog.Warning("diagnostics warning");
+                FrameLog.Error("diagnostics error");
+
+                DiagnosticsSnapshot snapshot = service.CaptureSnapshot();
+
+                Assert.AreEqual(2, receivedCount);
+                Assert.GreaterOrEqual(snapshot.BufferedLogCount, 2);
+                Assert.AreEqual(1, snapshot.WarningCount);
+                Assert.AreEqual(1, snapshot.ErrorCount);
+                Assert.Greater(snapshot.ManagedMemoryBytes, 0);
+
+                service.ClearLogs();
+                Assert.AreEqual(0, service.CaptureSnapshot().BufferedLogCount);
+                service.Shutdown();
+            }
+        }
+
+        [Test]
+        public void FileLogSink_WritesEntriesToDisk()
+        {
+            FrameLog.Configure(null);
+            FrameLog.ClearBufferedEntries();
+            string path = CreateTempLogPath();
+
+            try
+            {
+                using (new FileLogSink(path))
+                {
+                    FrameLog.Info("file sink test");
+                }
+
+                string contents = File.ReadAllText(path);
+                StringAssert.Contains("file sink test", contents);
+                StringAssert.Contains("[Info]", contents);
+            }
+            finally
+            {
+                DeleteFileIfExists(path);
+                DeleteFileIfExists(path + ".bak");
+                FrameLog.ClearBufferedEntries();
+            }
+        }
+
+        [Test]
+        public void FileLogSink_RotatesWhenMaxBytesExceeded()
+        {
+            FrameLog.Configure(null);
+            FrameLog.ClearBufferedEntries();
+            string path = CreateTempLogPath();
+
+            try
+            {
+                File.WriteAllText(path, new string('x', 128));
+
+                using (new FileLogSink(path, maxBytes: 64))
+                {
+                    FrameLog.Info("rotated entry");
+                }
+
+                Assert.IsTrue(File.Exists(path + ".bak"));
+                StringAssert.Contains("rotated entry", File.ReadAllText(path));
+                StringAssert.Contains(new string('x', 32), File.ReadAllText(path + ".bak"));
+            }
+            finally
+            {
+                DeleteFileIfExists(path);
+                DeleteFileIfExists(path + ".bak");
+                FrameLog.ClearBufferedEntries();
+            }
+        }
+
+        [Test]
+        public void DiagnosticsService_WriteLogsToFileReturnsDisposableSink()
+        {
+            FrameLog.Configure(null);
+            FrameLog.ClearBufferedEntries();
+            string path = CreateTempLogPath();
+
+            try
+            {
+                using (FrameTestFixture fixture = new FrameTestFixture())
+                {
+                    DiagnosticsService service = fixture.Initialize(new DiagnosticsService());
+                    IDisposable sink = service.WriteLogsToFile(path);
+
+                    FrameLog.Info("service file sink");
+                    sink.Dispose();
+                    FrameLog.Info("after sink disposed");
+
+                    string contents = File.ReadAllText(path);
+                    StringAssert.Contains("service file sink", contents);
+                    Assert.IsFalse(contents.Contains("after sink disposed"));
+
+                    service.Shutdown();
+                }
+            }
+            finally
+            {
+                DeleteFileIfExists(path);
+                DeleteFileIfExists(path + ".bak");
+                FrameLog.ClearBufferedEntries();
+            }
+        }
+
+        private static string CreateTempLogPath()
+        {
+            return Path.Combine(Path.GetTempPath(), "frame-log-" + Guid.NewGuid().ToString("N") + ".log");
+        }
+
+        private static void DeleteFileIfExists(string path)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
 
         private interface IDisposableService : IDisposable
@@ -192,6 +375,8 @@ namespace Frame.Tests.EditMode
 
             public override void OnApplicationFocus(bool focused) { recorder.Items.Add(moduleName + ".Focus"); }
 
+            public override void OnApplicationQuit() { recorder.Items.Add(moduleName + ".Quit"); }
+
             protected override void OnShutdown() { recorder.Items.Add(moduleName + ".Shutdown"); }
         }
 
@@ -242,6 +427,27 @@ namespace Frame.Tests.EditMode
             protected override void OnShutdown()
             {
                 ShutdownCount++;
+            }
+        }
+
+        private sealed class PlainSingleton : Singleton<PlainSingleton>
+        {
+            private PlainSingleton()
+            {
+            }
+
+            public int InitializeCount { get; private set; }
+
+            public int ReleaseCount { get; private set; }
+
+            protected override void OnSingletonInitialize()
+            {
+                InitializeCount++;
+            }
+
+            protected override void OnSingletonRelease()
+            {
+                ReleaseCount++;
             }
         }
     }

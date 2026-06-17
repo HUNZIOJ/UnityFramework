@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using Frame.Core;
+using Frame.Utilities;
 using UnityEngine;
 
 #if ENABLE_INPUT_SYSTEM
@@ -9,6 +12,10 @@ namespace Frame.Input
 {
     public sealed class InputService : GameModuleBase, IInputService
     {
+        private const string GameplayActionMapName = "Player";
+        private const string UIActionMapName = "UI";
+
+        private readonly Stack<InputContext> contextStack = new Stack<InputContext>();
         private InputContext currentContext = InputContext.Gameplay;
 
 #if ENABLE_INPUT_SYSTEM
@@ -18,6 +25,11 @@ namespace Frame.Input
         public InputContext CurrentContext
         {
             get { return currentContext; }
+        }
+
+        public int ContextStackDepth
+        {
+            get { return contextStack.Count; }
         }
 
         protected override void OnInitialize()
@@ -32,6 +44,24 @@ namespace Frame.Input
 #if ENABLE_INPUT_SYSTEM
             ApplyActionMapState();
 #endif
+        }
+
+        public IDisposable PushContext(InputContext context)
+        {
+            contextStack.Push(currentContext);
+            SetContext(context);
+            return new DisposableAction(() => PopContext());
+        }
+
+        public bool PopContext()
+        {
+            if (contextStack.Count == 0)
+            {
+                return false;
+            }
+
+            SetContext(contextStack.Pop());
+            return true;
         }
 
 #if ENABLE_INPUT_SYSTEM
@@ -68,6 +98,64 @@ namespace Frame.Input
             return action == null ? Vector2.zero : action.ReadValue<Vector2>();
         }
 
+        public bool ApplyBindingOverride(string actionName, int bindingIndex, string overridePath)
+        {
+            InputAction action = FindAction(actionName);
+            if (action == null || bindingIndex < 0 || bindingIndex >= action.bindings.Count || string.IsNullOrWhiteSpace(overridePath))
+            {
+                return false;
+            }
+
+            action.ApplyBindingOverride(bindingIndex, overridePath);
+            return true;
+        }
+
+        public bool ClearBindingOverride(string actionName, int bindingIndex)
+        {
+            InputAction action = FindAction(actionName);
+            if (action == null || bindingIndex < 0 || bindingIndex >= action.bindings.Count)
+            {
+                return false;
+            }
+
+            action.RemoveBindingOverride(bindingIndex);
+            return true;
+        }
+
+        public void ClearBindingOverrides()
+        {
+            if (actions != null)
+            {
+                actions.RemoveAllBindingOverrides();
+            }
+        }
+
+        public string SaveBindingOverridesAsJson()
+        {
+            return actions == null ? string.Empty : actions.SaveBindingOverridesAsJson();
+        }
+
+        public void LoadBindingOverridesFromJson(string json, bool removeExisting = true)
+        {
+            if (actions == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                if (removeExisting)
+                {
+                    actions.RemoveAllBindingOverrides();
+                }
+
+                return;
+            }
+
+            actions.LoadBindingOverridesFromJson(json, removeExisting);
+            ApplyActionMapState();
+        }
+
         private void ApplyActionMapState()
         {
             if (actions == null)
@@ -86,8 +174,8 @@ namespace Frame.Input
             {
                 InputActionMap map = actions.actionMaps[i];
                 bool shouldEnable =
-                    (currentContext == InputContext.Gameplay && map.name == "Gameplay") ||
-                    (currentContext == InputContext.UI && map.name == "UI");
+                    (currentContext == InputContext.Gameplay && map.name == GameplayActionMapName) ||
+                    (currentContext == InputContext.UI && map.name == UIActionMapName);
 
                 if (shouldEnable)
                 {
@@ -113,6 +201,7 @@ namespace Frame.Input
 
         protected override void OnShutdown()
         {
+            contextStack.Clear();
 #if ENABLE_INPUT_SYSTEM
             if (actions != null)
             {

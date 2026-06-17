@@ -16,6 +16,7 @@ EditMode 测试主要覆盖纯逻辑和无需真实帧循环的模块。PlayMode
 | Module | Test Script | Mode |
 | --- | --- | --- |
 | Core | `CoreModuleTests.cs`, `FrameworkBootstrapTests.cs` | EditMode + PlayMode |
+| Lifecycle | `LifecycleModuleTests.cs` | EditMode |
 | Events | `EventsModuleTests.cs` | EditMode |
 | Time | `TimeModuleTests.cs` | EditMode |
 | Pooling | `PoolingModuleTests.cs`, `PoolingPlayModeTests.cs` | EditMode + PlayMode |
@@ -26,6 +27,7 @@ EditMode 测试主要覆盖纯逻辑和无需真实帧循环的模块。PlayMode
 | Tweening / DOTween | `TweeningModuleTests.cs` | PlayMode |
 | Config | `ConfigModuleTests.cs` | EditMode |
 | Save | `SaveModuleTests.cs` | EditMode |
+| Preferences | `PreferencesModuleTests.cs` | EditMode |
 | Input | `InputModuleTests.cs` | EditMode |
 | Networking | `NetworkingModuleTests.cs` | PlayMode |
 | Localization | `LocalizationModuleTests.cs` | EditMode |
@@ -35,6 +37,7 @@ EditMode 测试主要覆盖纯逻辑和无需真实帧循环的模块。PlayMode
 ## What Is Tested
 
 - 服务注册、解析、释放、模块优先级、生命周期顺序和初始化失败清理。
+- 应用暂停、焦点变化、退出前事件和重复生命周期回调去重。
 - 事件订阅、一次性订阅、owner 批量解绑、异常隔离和清空订阅。
 - 延迟计时、循环计时、取消、owner 取消、非缩放时间和暂停行为。
 - C# 对象池、GameObject 池、PoolService、预热、归还、清理和 `IPoolable` 回调。
@@ -43,8 +46,9 @@ EditMode 测试主要覆盖纯逻辑和无需真实帧循环的模块。PlayMode
 - 音量分组、静音、音乐、音效、AudioCue 播放。
 - JSON 配置、ScriptableObject 配置、自定义 provider 优先级和缺失配置。
 - JSON 存档、备份恢复、自定义 serializer、slot 校验、列表和删除。
-- InputContext 和 InputSystem/Legacy 条件接口。
-- HTTP 空 URL、取消、失败响应、重试和回调异常隔离。
+- PlayerPrefs 偏好设置、基础类型、JSON 值、删除和变更事件。
+- InputContext、InputSystem/Legacy 条件接口和 InputSystem 绑定覆盖保存/加载。
+- HTTP 空 URL、取消、失败响应、重试、typed JSON、envelope 响应解析和回调异常隔离。
 - 本地化表、语言切换、fallback、缺失 key 和字典缓存。
 - 通用状态机的进入、Tick、退出、重复切换、缺失状态和清理。
 - 路径工具和一次性释放工具。
@@ -56,6 +60,16 @@ EditMode 测试主要覆盖纯逻辑和无需真实帧循环的模块。PlayMode
 
 1. 选择 `EditMode`，运行 `Frame.EditMode.Tests`。
 2. 选择 `PlayMode`，运行 `Frame.PlayMode.Tests`。
+
+构建流水线中建议先执行项目校验：
+
+```powershell
+& "D:\UnityEditor\6000.4.8f1\Editor\Unity.exe" `
+  -batchmode `
+  -projectPath "E:\UnityProject\Framework" `
+  -executeMethod Frame.Editor.FrameMenuItems.ValidateProjectForCI `
+  -quit
+```
 
 命令行运行需要本机 Unity 可执行文件路径。例如：
 

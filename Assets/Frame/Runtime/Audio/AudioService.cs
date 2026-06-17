@@ -13,6 +13,7 @@ namespace Frame.Audio
         private readonly Dictionary<AudioSource, ActivePlayback> activePlaybacks = new Dictionary<AudioSource, ActivePlayback>();
         private Transform audioRoot;
         private AudioPlaybackHandle musicHandle;
+        private CancellationTokenSource musicFadeCancellation;
         private bool muted;
 
         private sealed class ActivePlayback
@@ -24,6 +25,11 @@ namespace Frame.Audio
         public override int Priority
         {
             get { return -300; }
+        }
+
+        public AudioPlaybackHandle CurrentMusic
+        {
+            get { return musicHandle; }
         }
 
         protected override void OnInitialize()
@@ -66,13 +72,26 @@ namespace Frame.Audio
 
             StopMusic();
             musicHandle = PlayClipHandle(clip, AudioCategory.Music, volume, 1f, default(Vector3), true);
+            if (musicHandle != null && fadeSeconds > 0f)
+            {
+                musicHandle.Volume = 0f;
+                StartMusicFade(musicHandle, Mathf.Clamp01(volume), fadeSeconds, false);
+            }
         }
 
         public void StopMusic(float fadeSeconds = 0f)
         {
             if (musicHandle != null)
             {
-                musicHandle.Stop();
+                AudioPlaybackHandle handle = musicHandle;
+                if (fadeSeconds > 0f && handle.IsValid)
+                {
+                    StartMusicFade(handle, 0f, fadeSeconds, true);
+                    return;
+                }
+
+                CancelMusicFade();
+                handle.Stop();
                 musicHandle = null;
             }
         }
@@ -160,6 +179,7 @@ namespace Frame.Audio
 
         protected override void OnShutdown()
         {
+            CancelMusicFade();
             musicHandle = null;
 
             for (int i = 0; i < sourcePool.Count; i++)
@@ -240,8 +260,75 @@ namespace Frame.Audio
             ReturnSource(handle.Source, true);
             if (handle == musicHandle)
             {
+                CancelMusicFade();
                 musicHandle = null;
             }
+        }
+
+        private void StartMusicFade(AudioPlaybackHandle handle, float targetVolume, float seconds, bool stopWhenComplete)
+        {
+            if (handle == null || !handle.IsValid)
+            {
+                return;
+            }
+
+            CancelMusicFade();
+            CancellationTokenSource cancellation = new CancellationTokenSource();
+            musicFadeCancellation = cancellation;
+            FadeMusicAsync(handle, Mathf.Clamp01(targetVolume), seconds, stopWhenComplete, cancellation).Forget();
+        }
+
+        private async UniTaskVoid FadeMusicAsync(AudioPlaybackHandle handle, float targetVolume, float seconds, bool stopWhenComplete, CancellationTokenSource cancellation)
+        {
+            float duration = Mathf.Max(0.001f, seconds);
+            float startVolume = handle == null ? 0f : handle.Volume;
+            float elapsed = 0f;
+
+            try
+            {
+                await UniTask.Yield(PlayerLoopTiming.Update, cancellation.Token);
+
+                while (handle != null && handle.IsValid && elapsed < duration)
+                {
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    elapsed += Time.unscaledDeltaTime;
+                    handle.Volume = Mathf.Lerp(startVolume, targetVolume, Mathf.Clamp01(elapsed / duration));
+                    await UniTask.Yield(PlayerLoopTiming.Update, cancellation.Token);
+                }
+
+                if (handle != null && handle.IsValid)
+                {
+                    handle.Volume = targetVolume;
+                    if (stopWhenComplete)
+                    {
+                        handle.Stop();
+                    }
+                }
+            }
+            catch (System.OperationCanceledException)
+            {
+            }
+            finally
+            {
+                if (ReferenceEquals(musicFadeCancellation, cancellation))
+                {
+                    musicFadeCancellation = null;
+                    cancellation.Dispose();
+                }
+            }
+        }
+
+        private void CancelMusicFade()
+        {
+            CancellationTokenSource cancellation = musicFadeCancellation;
+            if (cancellation == null)
+            {
+                return;
+            }
+
+            musicFadeCancellation = null;
+            cancellation.Cancel();
+            cancellation.Dispose();
         }
 
         private void ApplyMixerGroup(AudioSource source, AudioCategory category)

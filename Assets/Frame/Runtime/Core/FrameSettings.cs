@@ -1,3 +1,4 @@
+using Frame.Assets;
 using Frame.Audio;
 using UnityEngine;
 using UnityEngine.Audio;
@@ -19,9 +20,17 @@ namespace Frame.Core
         [SerializeField] private bool enableLogs = true;
         [SerializeField] private FrameLogLevel minimumLogLevel = FrameLogLevel.Info;
 
+        [Header("Diagnostics")]
+        [SerializeField] private bool enableRuntimeDiagnosticsOverlay = false;
+        [SerializeField] private bool runtimeDiagnosticsOverlayVisibleOnStart = false;
+        [SerializeField] private KeyCode runtimeDiagnosticsOverlayToggleKey = KeyCode.BackQuote;
+
         [Header("Modules")]
+        [SerializeField] private bool enableDiagnosticsService = true;
         [SerializeField] private bool enableEventBus = true;
+        [SerializeField] private bool enableLifecycleService = true;
         [SerializeField] private bool enableTimerService = true;
+        [SerializeField] private bool enablePreferencesService = true;
         [SerializeField] private bool enablePoolService = true;
         [SerializeField] private bool enableAssetService = true;
         [SerializeField] private bool enableSceneService = true;
@@ -33,6 +42,18 @@ namespace Frame.Core
         [SerializeField] private bool enableInputService = true;
         [SerializeField] private bool enableHttpService = true;
         [SerializeField] private bool enableLocalizationService = true;
+
+        [Header("Assets")]
+        [SerializeField] private AssetServiceBackend assetServiceBackend = AssetServiceBackend.Resources;
+        [SerializeField] private string yooAssetPackageName = "DefaultPackage";
+        [SerializeField] private YooAssetPlayMode yooAssetPlayMode = YooAssetPlayMode.EditorSimulate;
+        [SerializeField] private string yooAssetEditorPackageRoot = string.Empty;
+        [SerializeField] private string yooAssetBuiltinPackageRoot = string.Empty;
+        [SerializeField] private string yooAssetDefaultHostServer = string.Empty;
+        [SerializeField] private string yooAssetFallbackHostServer = string.Empty;
+        [SerializeField] private int yooAssetDownloadMaxConcurrency = 5;
+        [SerializeField] private int yooAssetDownloadMaxRequestPerFrame = 1;
+        [SerializeField] private int yooAssetDownloadWatchdogTimeout = 10;
 
         [Header("UI")]
         [SerializeField] private string uiRootName = "UIRoot";
@@ -89,14 +110,44 @@ namespace Frame.Core
             get { return minimumLogLevel; }
         }
 
+        public bool EnableRuntimeDiagnosticsOverlay
+        {
+            get { return enableRuntimeDiagnosticsOverlay; }
+        }
+
+        public bool RuntimeDiagnosticsOverlayVisibleOnStart
+        {
+            get { return runtimeDiagnosticsOverlayVisibleOnStart; }
+        }
+
+        public KeyCode RuntimeDiagnosticsOverlayToggleKey
+        {
+            get { return runtimeDiagnosticsOverlayToggleKey; }
+        }
+
+        public bool EnableDiagnosticsService
+        {
+            get { return enableDiagnosticsService; }
+        }
+
         public bool EnableEventBus
         {
             get { return enableEventBus; }
         }
 
+        public bool EnableLifecycleService
+        {
+            get { return enableLifecycleService; }
+        }
+
         public bool EnableTimerService
         {
             get { return enableTimerService; }
+        }
+
+        public bool EnablePreferencesService
+        {
+            get { return enablePreferencesService; }
         }
 
         public bool EnablePoolService
@@ -152,6 +203,56 @@ namespace Frame.Core
         public bool EnableLocalizationService
         {
             get { return enableLocalizationService; }
+        }
+
+        public AssetServiceBackend AssetServiceBackend
+        {
+            get { return assetServiceBackend; }
+        }
+
+        public string YooAssetPackageName
+        {
+            get { return string.IsNullOrWhiteSpace(yooAssetPackageName) ? "DefaultPackage" : yooAssetPackageName.Trim(); }
+        }
+
+        public YooAssetPlayMode YooAssetPlayMode
+        {
+            get { return yooAssetPlayMode; }
+        }
+
+        public string YooAssetEditorPackageRoot
+        {
+            get { return string.IsNullOrWhiteSpace(yooAssetEditorPackageRoot) ? string.Empty : yooAssetEditorPackageRoot.Trim(); }
+        }
+
+        public string YooAssetBuiltinPackageRoot
+        {
+            get { return string.IsNullOrWhiteSpace(yooAssetBuiltinPackageRoot) ? string.Empty : yooAssetBuiltinPackageRoot.Trim(); }
+        }
+
+        public string YooAssetDefaultHostServer
+        {
+            get { return string.IsNullOrWhiteSpace(yooAssetDefaultHostServer) ? string.Empty : yooAssetDefaultHostServer.Trim(); }
+        }
+
+        public string YooAssetFallbackHostServer
+        {
+            get { return string.IsNullOrWhiteSpace(yooAssetFallbackHostServer) ? string.Empty : yooAssetFallbackHostServer.Trim(); }
+        }
+
+        public int YooAssetDownloadMaxConcurrency
+        {
+            get { return Mathf.Max(1, yooAssetDownloadMaxConcurrency); }
+        }
+
+        public int YooAssetDownloadMaxRequestPerFrame
+        {
+            get { return Mathf.Max(1, yooAssetDownloadMaxRequestPerFrame); }
+        }
+
+        public int YooAssetDownloadWatchdogTimeout
+        {
+            get { return Mathf.Max(1, yooAssetDownloadWatchdogTimeout); }
         }
 
         public string UIRootName
@@ -245,6 +346,9 @@ namespace Frame.Core
             uiMatchWidthOrHeight = Mathf.Clamp01(uiMatchWidthOrHeight);
             audioSourcePoolSize = Mathf.Max(1, audioSourcePoolSize);
             defaultGameObjectPoolMaxSize = Mathf.Max(1, defaultGameObjectPoolMaxSize);
+            yooAssetDownloadMaxConcurrency = Mathf.Max(1, yooAssetDownloadMaxConcurrency);
+            yooAssetDownloadMaxRequestPerFrame = Mathf.Max(1, yooAssetDownloadMaxRequestPerFrame);
+            yooAssetDownloadWatchdogTimeout = Mathf.Max(1, yooAssetDownloadWatchdogTimeout);
         }
 #endif
     }

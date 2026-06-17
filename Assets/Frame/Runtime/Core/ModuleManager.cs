@@ -112,6 +112,14 @@ namespace Frame.Core
             }
         }
 
+        public void ApplicationQuitAll()
+        {
+            for (int i = 0; i < modules.Count; i++)
+            {
+                modules[i].OnApplicationQuit();
+            }
+        }
+
         public void ShutdownAll()
         {
             for (int i = modules.Count - 1; i >= 0; i--)

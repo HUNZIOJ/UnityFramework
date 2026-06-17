@@ -7,7 +7,8 @@ namespace Frame.Timing
     public sealed class TimerService : GameModuleBase, ITimerService
     {
         private readonly Dictionary<int, TimerTask> timers = new Dictionary<int, TimerTask>();
-        private readonly List<int> removeBuffer = new List<int>();
+        private readonly List<int> completedBuffer = new List<int>();
+        private readonly List<int> ownerCancelBuffer = new List<int>();
         private readonly List<int> updateBuffer = new List<int>();
         private int nextId = 1;
         private bool paused;
@@ -15,6 +16,26 @@ namespace Frame.Timing
         public override int Priority
         {
             get { return -800; }
+        }
+
+        public int ActiveTimerCount
+        {
+            get { return timers.Count; }
+        }
+
+        public int ScaledTimerCount
+        {
+            get { return CountTimers(unscaled: false); }
+        }
+
+        public int UnscaledTimerCount
+        {
+            get { return CountTimers(unscaled: true); }
+        }
+
+        public bool IsPaused
+        {
+            get { return paused; }
         }
 
         protected override void OnInitialize()
@@ -55,18 +76,18 @@ namespace Frame.Timing
                 return;
             }
 
-            removeBuffer.Clear();
+            ownerCancelBuffer.Clear();
             foreach (KeyValuePair<int, TimerTask> pair in timers)
             {
                 if (ReferenceEquals(pair.Value.Owner, owner))
                 {
-                    removeBuffer.Add(pair.Key);
+                    ownerCancelBuffer.Add(pair.Key);
                 }
             }
 
-            for (int i = 0; i < removeBuffer.Count; i++)
+            for (int i = 0; i < ownerCancelBuffer.Count; i++)
             {
-                timers.Remove(removeBuffer[i]);
+                timers.Remove(ownerCancelBuffer[i]);
             }
         }
 
@@ -77,7 +98,7 @@ namespace Frame.Timing
                 return;
             }
 
-            removeBuffer.Clear();
+            completedBuffer.Clear();
             updateBuffer.Clear();
             foreach (int key in timers.Keys)
             {
@@ -116,13 +137,13 @@ namespace Frame.Timing
                 }
                 else
                 {
-                    removeBuffer.Add(id);
+                    completedBuffer.Add(id);
                 }
             }
 
-            for (int i = 0; i < removeBuffer.Count; i++)
+            for (int i = 0; i < completedBuffer.Count; i++)
             {
-                timers.Remove(removeBuffer[i]);
+                timers.Remove(completedBuffer[i]);
             }
         }
 
@@ -134,7 +155,8 @@ namespace Frame.Timing
         protected override void OnShutdown()
         {
             timers.Clear();
-            removeBuffer.Clear();
+            completedBuffer.Clear();
+            ownerCancelBuffer.Clear();
             updateBuffer.Clear();
             paused = false;
             nextId = 1;
@@ -159,6 +181,20 @@ namespace Frame.Timing
             });
 
             return new TimerHandle(this, id);
+        }
+
+        private int CountTimers(bool unscaled)
+        {
+            int count = 0;
+            foreach (TimerTask timer in timers.Values)
+            {
+                if (timer.Unscaled == unscaled)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         private sealed class TimerTask

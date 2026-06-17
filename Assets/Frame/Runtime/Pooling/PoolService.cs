@@ -83,12 +83,43 @@ namespace Frame.Pooling
             }
         }
 
-        protected override void OnShutdown()
+        public PoolStats GetGameObjectPoolStats(string key)
+        {
+            GameObjectPool pool;
+            return gameObjectPools.TryGetValue(key, out pool) ? pool.GetStats(key) : null;
+        }
+
+        public List<PoolStats> GetAllGameObjectPoolStats()
+        {
+            List<PoolStats> stats = new List<PoolStats>();
+            foreach (KeyValuePair<string, GameObjectPool> pair in gameObjectPools)
+            {
+                stats.Add(pair.Value.GetStats(pair.Key));
+            }
+
+            return stats;
+        }
+
+        public void ClearGameObjectPool(string key)
+        {
+            GameObjectPool pool;
+            if (gameObjectPools.TryGetValue(key, out pool))
+            {
+                pool.Clear();
+            }
+        }
+
+        public void ClearAllGameObjectPools()
         {
             foreach (GameObjectPool pool in gameObjectPools.Values)
             {
                 pool.Clear();
             }
+        }
+
+        protected override void OnShutdown()
+        {
+            ClearAllGameObjectPools();
 
             gameObjectPools.Clear();
             if (poolRoot != null)

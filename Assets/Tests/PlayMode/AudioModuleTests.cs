@@ -13,6 +13,7 @@ namespace Frame.Tests.PlayMode
         public IEnumerator AudioService_VolumeMuteMusicOneShotAndCueWork()
         {
             using (FramePlayModeTestFixture fixture = new FramePlayModeTestFixture())
+            using (AudioListenerScope.Ensure(fixture.Context.Root))
             {
                 AudioService service = fixture.Initialize(new AudioService());
                 AudioClip clip = AudioClip.Create("TestClip", 4410, 1, 44100, false);
@@ -50,6 +51,23 @@ namespace Frame.Tests.PlayMode
                 service.SetMuted(false);
                 service.PlayMusic(clip, fadeSeconds: 0f, volume: 0.8f);
                 yield return null;
+                Assert.IsNotNull(service.CurrentMusic);
+                Assert.AreEqual(0.8f, service.CurrentMusic.Source.volume, 0.001f);
+
+                service.PlayMusic(clip, fadeSeconds: 0.05f, volume: 0.8f);
+                AudioPlaybackHandle fadingMusic = service.CurrentMusic;
+                Assert.IsNotNull(fadingMusic);
+                Assert.IsTrue(fadingMusic.IsValid);
+                Assert.AreEqual(0f, fadingMusic.Source.volume, 0.001f);
+                yield return new WaitForSecondsRealtime(0.08f);
+                Assert.IsTrue(fadingMusic.IsValid);
+                Assert.AreEqual(0.8f, fadingMusic.Source.volume, 0.05f);
+
+                service.StopMusic(0.05f);
+                Assert.AreSame(fadingMusic, service.CurrentMusic);
+                yield return new WaitForSecondsRealtime(0.08f);
+                Assert.IsFalse(fadingMusic.IsValid);
+                Assert.IsNull(service.CurrentMusic);
 
                 AudioCue musicCue = CreateCue(clip, AudioCategory.Music, 0.6f, 1f, loop: true);
                 AudioPlaybackHandle musicHandle = service.PlayCueHandle(musicCue);
@@ -89,6 +107,36 @@ namespace Frame.Tests.PlayMode
         {
             FieldInfo field = typeof(AudioCue).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
             field.SetValue(cue, value);
+        }
+
+        private sealed class AudioListenerScope : System.IDisposable
+        {
+            private readonly GameObject listenerObject;
+
+            private AudioListenerScope(GameObject listenerObject)
+            {
+                this.listenerObject = listenerObject;
+            }
+
+            public static AudioListenerScope Ensure(Transform parent)
+            {
+                if (Object.FindAnyObjectByType<AudioListener>() != null)
+                {
+                    return new AudioListenerScope(null);
+                }
+
+                GameObject listener = new GameObject("TestAudioListener", typeof(AudioListener));
+                listener.transform.SetParent(parent, false);
+                return new AudioListenerScope(listener);
+            }
+
+            public void Dispose()
+            {
+                if (listenerObject != null)
+                {
+                    Object.Destroy(listenerObject);
+                }
+            }
         }
     }
 }

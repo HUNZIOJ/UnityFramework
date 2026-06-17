@@ -22,6 +22,8 @@ namespace Frame.Core
 
         void OnApplicationFocus(bool focused);
 
+        void OnApplicationQuit();
+
         void Shutdown();
     }
 }

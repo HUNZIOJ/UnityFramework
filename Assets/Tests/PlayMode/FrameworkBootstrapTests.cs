@@ -3,10 +3,13 @@ using Frame.Assets;
 using Frame.Audio;
 using Frame.Config;
 using Frame.Core;
+using Frame.Diagnostics;
 using Frame.Events;
+using Frame.Lifecycle;
 using Frame.Localization;
 using Frame.Networking;
 using Frame.Pooling;
+using Frame.Preferences;
 using Frame.Save;
 using Frame.Scenes;
 using Frame.Timing;
@@ -39,9 +42,13 @@ namespace Frame.Tests.PlayMode
             yield return null;
 
             Assert.IsNotNull(entry);
+            Assert.IsTrue(GameEntry.HasInstance);
             Assert.IsTrue(Framework.IsInitialized);
+            Assert.IsTrue(Framework.TryResolve(out IDiagnosticsService _));
             Assert.IsTrue(Framework.TryResolve(out IEventBus _));
+            Assert.IsTrue(Framework.TryResolve(out ILifecycleService _));
             Assert.IsTrue(Framework.TryResolve(out ITimerService _));
+            Assert.IsTrue(Framework.TryResolve(out IPreferencesService _));
             Assert.IsTrue(Framework.TryResolve(out IPoolService _));
             Assert.IsTrue(Framework.TryResolve(out IAssetService _));
             Assert.IsTrue(Framework.TryResolve(out ISceneService _));

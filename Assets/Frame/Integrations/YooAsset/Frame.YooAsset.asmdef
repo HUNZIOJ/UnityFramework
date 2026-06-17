@@ -1,0 +1,26 @@
+{
+  "name": "Frame.YooAsset",
+  "rootNamespace": "Frame.YooAsset",
+  "references": [
+    "Frame.Runtime",
+    "UniTask",
+    "YooAsset"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "FRAME_YOOASSET"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.tuyoogame.yooasset",
+      "expression": "",
+      "define": "FRAME_YOOASSET"
+    }
+  ],
+  "noEngineReferences": false
+}

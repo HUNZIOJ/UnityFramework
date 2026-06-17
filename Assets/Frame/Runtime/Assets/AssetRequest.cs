@@ -16,6 +16,29 @@ namespace Frame.Assets
             private set;
         }
 
+        public bool IsCanceled
+        {
+            get;
+            private set;
+        }
+
+        public bool Success
+        {
+            get { return Handle != null && Handle.IsValid; }
+        }
+
+        public float Progress
+        {
+            get;
+            private set;
+        }
+
+        public string Error
+        {
+            get;
+            private set;
+        }
+
         public AssetHandle<T> Handle
         {
             get;
@@ -27,9 +50,26 @@ namespace Frame.Assets
             get { return Handle == null ? null : Handle.Asset; }
         }
 
-        internal void Complete(AssetHandle<T> handle)
+        public void Cancel()
+        {
+            if (IsDone)
+            {
+                return;
+            }
+
+            IsCanceled = true;
+        }
+
+        internal void SetProgress(float progress)
+        {
+            Progress = Mathf.Clamp01(progress);
+        }
+
+        internal void Complete(AssetHandle<T> handle, string error = null)
         {
             Handle = handle;
+            Error = error;
+            Progress = 1f;
             IsDone = true;
         }
     }

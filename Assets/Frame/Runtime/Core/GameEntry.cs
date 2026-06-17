@@ -3,33 +3,29 @@ using UnityEngine;
 namespace Frame.Core
 {
     [DefaultExecutionOrder(-10000)]
-    public sealed class GameEntry : MonoBehaviour
+    public sealed class GameEntry : MonoSingleton<GameEntry>
     {
-        private static GameEntry instance;
-
         [SerializeField] private FrameSettings settings;
         [SerializeField] private bool initializeOnAwake = true;
-
-        private bool isQuitting;
-
-        public static GameEntry Instance
-        {
-            get { return instance; }
-        }
 
         public FrameSettings Settings
         {
             get { return settings; }
         }
 
+        protected override bool UseDontDestroyOnLoad
+        {
+            get { return settings != null && settings.UseDontDestroyOnLoad; }
+        }
+
         public static GameEntry Ensure(FrameSettings frameSettings)
         {
-            if (instance != null)
+            if (Instance != null)
             {
-                return instance;
+                return Instance;
             }
 
-            GameEntry existing = FindExistingEntry();
+            GameEntry existing = FindExistingInstance();
             if (existing != null)
             {
                 existing.UseSettings(frameSettings);
@@ -52,23 +48,11 @@ namespace Frame.Core
             }
         }
 
-        private void Awake()
+        protected override void OnSingletonAwake()
         {
-            if (instance != null && instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
-
-            instance = this;
             if (settings == null)
             {
                 settings = FrameSettings.LoadOrDefault();
-            }
-
-            if (settings.UseDontDestroyOnLoad)
-            {
-                DontDestroyOnLoad(gameObject);
             }
 
             if (initializeOnAwake)
@@ -107,32 +91,18 @@ namespace Frame.Core
             Framework.OnApplicationFocus(hasFocus);
         }
 
-        private void OnApplicationQuit()
+        protected override void OnSingletonApplicationQuit()
         {
-            isQuitting = true;
+            Framework.OnApplicationQuit();
             Framework.Shutdown();
         }
 
-        private void OnDestroy()
+        protected override void OnSingletonDestroyed()
         {
-            if (instance == this)
+            if (!IsApplicationQuitting && Framework.IsInitialized)
             {
-                if (!isQuitting && Framework.IsInitialized)
-                {
-                    Framework.Shutdown();
-                }
-
-                instance = null;
+                Framework.Shutdown();
             }
-        }
-
-        private static GameEntry FindExistingEntry()
-        {
-#if UNITY_2023_1_OR_NEWER
-            return Object.FindAnyObjectByType<GameEntry>(FindObjectsInactive.Include);
-#else
-            return Object.FindObjectOfType<GameEntry>(true);
-#endif
         }
     }
 }

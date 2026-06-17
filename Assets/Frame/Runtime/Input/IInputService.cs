@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 #if ENABLE_INPUT_SYSTEM
@@ -10,7 +11,13 @@ namespace Frame.Input
     {
         InputContext CurrentContext { get; }
 
+        int ContextStackDepth { get; }
+
         void SetContext(InputContext context);
+
+        IDisposable PushContext(InputContext context);
+
+        bool PopContext();
 
 #if ENABLE_INPUT_SYSTEM
         void SetActions(InputActionAsset actionAsset);
@@ -20,6 +27,16 @@ namespace Frame.Input
         bool WasPressedThisFrame(string actionName);
 
         Vector2 ReadVector2(string actionName);
+
+        bool ApplyBindingOverride(string actionName, int bindingIndex, string overridePath);
+
+        bool ClearBindingOverride(string actionName, int bindingIndex);
+
+        void ClearBindingOverrides();
+
+        string SaveBindingOverridesAsJson();
+
+        void LoadBindingOverridesFromJson(string json, bool removeExisting = true);
 #else
         bool GetKey(KeyCode key);
 

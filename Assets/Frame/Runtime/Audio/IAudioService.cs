@@ -91,6 +91,8 @@ namespace Frame.Audio
 
     public interface IAudioService
     {
+        AudioPlaybackHandle CurrentMusic { get; }
+
         void SetVolume(AudioCategory category, float volume);
 
         float GetVolume(AudioCategory category);

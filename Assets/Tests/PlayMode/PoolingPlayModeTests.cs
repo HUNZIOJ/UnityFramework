@@ -20,16 +20,30 @@ namespace Frame.Tests.PlayMode
 
                 GameObjectPool pool = service.CreateGameObjectPool("playmode", prefab, maxSize: 2, prewarm: 1);
                 Assert.AreEqual(1, pool.CountInactive);
+                Assert.AreEqual(1, pool.GetStats("playmode").CreatedCount);
                 Assert.IsTrue(service.TryGetGameObjectPool("playmode", out GameObjectPool resolved));
                 Assert.AreSame(pool, resolved);
                 Assert.AreSame(pool, service.CreateGameObjectPool("playmode", prefab));
 
                 GameObject instance = service.Spawn("playmode");
+                Assert.AreEqual(1, pool.CountActive);
+                Assert.AreEqual(0, pool.CountInactive);
                 TestPoolable poolable = instance.GetComponent<TestPoolable>();
                 Assert.AreEqual(1, poolable.Spawned);
 
                 service.Despawn("playmode", instance);
+                Assert.AreEqual(0, pool.CountActive);
+                Assert.AreEqual(1, pool.CountInactive);
                 Assert.AreEqual(1, poolable.Despawned);
+                PoolStats stats = service.GetGameObjectPoolStats("playmode");
+                Assert.AreEqual("playmode", stats.Key);
+                Assert.AreEqual(1, stats.GetCount);
+                Assert.AreEqual(1, stats.ReleaseCount);
+                Assert.AreEqual(1, service.GetAllGameObjectPoolStats().Count);
+
+                service.ClearGameObjectPool("playmode");
+                Assert.AreEqual(0, pool.CountInactive);
+                Assert.AreEqual(1, pool.GetStats().DestroyedCount);
 
                 GameObject unknown = new GameObject("UnknownPoolInstance");
                 service.Despawn("missing", unknown);

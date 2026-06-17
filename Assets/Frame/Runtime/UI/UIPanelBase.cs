@@ -36,15 +36,25 @@ namespace Frame.UI
             OnOpen(args);
         }
 
-        internal void InternalClose()
+        internal bool InternalClose(bool deactivate = true)
         {
             if (!IsOpen)
             {
-                return;
+                return false;
             }
 
             IsOpen = false;
             OnClose();
+            if (deactivate)
+            {
+                gameObject.SetActive(false);
+            }
+
+            return true;
+        }
+
+        internal void InternalSetClosed()
+        {
             gameObject.SetActive(false);
         }
 

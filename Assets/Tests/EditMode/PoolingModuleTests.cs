@@ -23,10 +23,17 @@ namespace Frame.Tests.EditMode
             pool.Prewarm(2);
             Assert.AreEqual(2, pool.CountInactive);
             Assert.AreEqual(2, released);
+            PoolStats stats = pool.GetStats("items");
+            Assert.AreEqual("items", stats.Key);
+            Assert.AreEqual(0, stats.CountActive);
+            Assert.AreEqual(2, stats.CountInactive);
+            Assert.AreEqual(2, stats.CreatedCount);
+            Assert.AreEqual(2, stats.ReleaseCount);
 
             PooledItem itemA = pool.Get();
             PooledItem itemB = pool.Get();
             Assert.AreEqual(0, pool.CountInactive);
+            Assert.AreEqual(2, pool.CountActive);
             Assert.AreEqual(2, got);
 
             pool.Release(itemA);
@@ -38,10 +45,17 @@ namespace Frame.Tests.EditMode
             Assert.AreEqual(5, released);
             Assert.AreEqual(2, itemA.ResetCount);
             Assert.AreEqual(1, destroyed);
+            stats = pool.GetStats("items");
+            Assert.AreEqual(0, stats.CountActive);
+            Assert.AreEqual(2, stats.CountInactive);
+            Assert.AreEqual(2, stats.GetCount);
+            Assert.AreEqual(5, stats.ReleaseCount);
+            Assert.AreEqual(1, stats.DestroyedCount);
 
             pool.Clear();
             Assert.AreEqual(0, pool.CountInactive);
             Assert.AreEqual(3, destroyed);
+            Assert.AreEqual(3, pool.GetStats().DestroyedCount);
         }
 
         private sealed class PooledItem : IResettablePoolItem
