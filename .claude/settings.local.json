@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc -l)",
+      "Bash(awk '{print $5 \" bytes\"}')",
+      "mcp__ide__getDiagnostics",
+      "Bash(ls *.sln)",
+      "Bash(ls Frame.Runtime.csproj)",
+      "Bash(which dotnet *)",
+      "Bash(ls \"E:/UnityProject/Framework/Library/ScriptAssemblies/Frame.Runtime.dll\")",
+      "Bash(timeout 180 dotnet build Frame.Runtime.csproj -p:NoWarn=CS8632 --nologo -clp:ErrorsOnly)"
+    ]
+  }
+}
