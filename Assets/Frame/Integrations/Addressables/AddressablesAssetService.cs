@@ -29,56 +29,14 @@ namespace Frame.Addressables
 
         public AssetHandle<T> Load<T>(string path) where T : Object
         {
-            path = NormalizeAddress(path);
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                FrameLog.Warning("Addressables address is empty.");
-                return new AssetHandle<T>(this, path, null);
-            }
+            AssetHandle<T> handle;
+            TryLoadInternal(path, true, out handle);
+            return handle;
+        }
 
-            EnsureInitialized();
-
-            AddressablesAssetEntry entry;
-            if (cache.TryGetValue(path, out entry) && entry.Asset != null)
-            {
-                T cachedAsset = entry.Asset as T;
-                if (cachedAsset == null)
-                {
-                    FrameLog.Warning("Addressables asset type mismatch: " + path + " expected=" + typeof(T).Name);
-                    return new AssetHandle<T>(this, path, null);
-                }
-
-                entry.RefCount++;
-                return new AssetHandle<T>(this, path, cachedAsset);
-            }
-
-            AsyncOperationHandle<T> operation = UnityAddressables.LoadAssetAsync<T>(path);
-            T asset = null;
-            try
-            {
-                asset = operation.WaitForCompletion();
-            }
-            catch (Exception exception)
-            {
-                FrameLog.Exception(exception);
-            }
-
-            if (operation.Status != AsyncOperationStatus.Succeeded || asset == null)
-            {
-                string error = operation.OperationException == null ? "Unknown error." : operation.OperationException.Message;
-                FrameLog.Warning("Addressables asset not found: " + path + " type=" + typeof(T).Name + " error=" + error);
-                ReleaseOperation(operation);
-                return new AssetHandle<T>(this, path, null);
-            }
-
-            cache[path] = new AddressablesAssetEntry
-            {
-                Asset = asset,
-                Handle = operation,
-                RefCount = 1
-            };
-
-            return new AssetHandle<T>(this, path, asset);
+        public bool TryLoad<T>(string path, out AssetHandle<T> handle) where T : Object
+        {
+            return TryLoadInternal(path, false, out handle);
         }
 
         public AssetRequest<T> LoadAsync<T>(string path, Action<AssetHandle<T>> completed = null) where T : Object
@@ -299,6 +257,85 @@ namespace Frame.Addressables
             }
 
             initialized = true;
+        }
+
+        private bool TryLoadInternal<T>(string path, bool logWarnings, out AssetHandle<T> handle) where T : Object
+        {
+            path = NormalizeAddress(path);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                if (logWarnings)
+                {
+                    FrameLog.Warning("Addressables address is empty.");
+                }
+
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            EnsureInitialized();
+
+            AddressablesAssetEntry entry;
+            if (cache.TryGetValue(path, out entry) && entry.Asset != null)
+            {
+                T cachedAsset = entry.Asset as T;
+                if (cachedAsset == null)
+                {
+                    if (logWarnings)
+                    {
+                        FrameLog.Warning("Addressables asset type mismatch: " + path + " expected=" + typeof(T).Name);
+                    }
+
+                    handle = new AssetHandle<T>(this, path, null);
+                    return false;
+                }
+
+                entry.RefCount++;
+                handle = new AssetHandle<T>(this, path, cachedAsset);
+                return true;
+            }
+
+            AsyncOperationHandle<T> operation = default(AsyncOperationHandle<T>);
+            T asset = null;
+            try
+            {
+                operation = UnityAddressables.LoadAssetAsync<T>(path);
+                asset = operation.WaitForCompletion();
+            }
+            catch (Exception exception)
+            {
+                if (logWarnings)
+                {
+                    FrameLog.Exception(exception);
+                }
+
+                ReleaseOperation(operation);
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            if (operation.Status != AsyncOperationStatus.Succeeded || asset == null)
+            {
+                if (logWarnings)
+                {
+                    string error = operation.OperationException == null ? "Unknown error." : operation.OperationException.Message;
+                    FrameLog.Warning("Addressables asset not found: " + path + " type=" + typeof(T).Name + " error=" + error);
+                }
+
+                ReleaseOperation(operation);
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            cache[path] = new AddressablesAssetEntry
+            {
+                Asset = asset,
+                Handle = operation,
+                RefCount = 1
+            };
+
+            handle = new AssetHandle<T>(this, path, asset);
+            return true;
         }
 
         private static void CompleteRequest<T>(AssetRequest<T> request, AssetHandle<T> handle, Action<AssetHandle<T>> completed, string error = null) where T : Object

@@ -145,27 +145,6 @@ namespace Frame.Tests.EditMode
         }
 
         [Test]
-        public void LocalizedTextTable_SetValueBuildsSpreadsheetTableInCode()
-        {
-            LocalizedTextTable table = ScriptableObject.CreateInstance<LocalizedTextTable>();
-            try
-            {
-                table.SetValue("menu.start", "en", "Start");
-                table.SetValue("menu.start", "zh", "Start-ZH");
-
-                Assert.IsTrue(table.TryGet("en", "menu.start", out string value));
-                Assert.AreEqual("Start", value);
-
-                Assert.IsTrue(table.TryGet("zh", "menu.start", out value));
-                Assert.AreEqual("Start-ZH", value);
-            }
-            finally
-            {
-                Object.DestroyImmediate(table);
-            }
-        }
-
-        [Test]
         public void LocalizedTextTable_CanReadCsvTextAssetSource()
         {
             LocalizedTextTable table = ScriptableObject.CreateInstance<LocalizedTextTable>();

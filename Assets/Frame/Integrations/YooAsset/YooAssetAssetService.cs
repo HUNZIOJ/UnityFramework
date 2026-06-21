@@ -39,57 +39,14 @@ namespace Frame.YooAsset
 
         public AssetHandle<T> Load<T>(string path) where T : Object
         {
-            path = NormalizeLocation(path);
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                FrameLog.Warning("YooAsset location is empty.");
-                return new AssetHandle<T>(this, path, null);
-            }
+            AssetHandle<T> handle;
+            TryLoadInternal(path, true, out handle);
+            return handle;
+        }
 
-            if (!EnsurePackageReady())
-            {
-                return new AssetHandle<T>(this, path, null);
-            }
-
-            YooAssetEntry entry;
-            if (cache.TryGetValue(path, out entry) && entry.Asset != null)
-            {
-                T cachedAsset = entry.Asset as T;
-                if (cachedAsset == null)
-                {
-                    FrameLog.Warning("YooAsset asset type mismatch: " + path + " expected=" + typeof(T).Name);
-                    return new AssetHandle<T>(this, path, null);
-                }
-
-                entry.RefCount++;
-                return new AssetHandle<T>(this, path, cachedAsset);
-            }
-
-            YooAssetRuntime.AssetHandle yooHandle = null;
-            try
-            {
-                yooHandle = package.LoadAssetSync<T>(path);
-            }
-            catch (Exception exception)
-            {
-                FrameLog.Exception(exception);
-            }
-
-            T asset = GetLoadedAsset<T>(path, yooHandle, "YooAsset asset not found");
-            if (asset == null)
-            {
-                ReleaseYooHandle(yooHandle);
-                return new AssetHandle<T>(this, path, null);
-            }
-
-            cache[path] = new YooAssetEntry
-            {
-                Asset = asset,
-                Handle = yooHandle,
-                RefCount = 1
-            };
-
-            return new AssetHandle<T>(this, path, asset);
+        public bool TryLoad<T>(string path, out AssetHandle<T> handle) where T : Object
+        {
+            return TryLoadInternal(path, false, out handle);
         }
 
         public AssetRequest<T> LoadAsync<T>(string path, Action<AssetHandle<T>> completed = null) where T : Object
@@ -362,14 +319,18 @@ namespace Frame.YooAsset
             }
         }
 
-        private bool EnsurePackageReady()
+        private bool EnsurePackageReady(bool logWarnings = true)
         {
             if (packageReady && package != null)
             {
                 return true;
             }
 
-            FrameLog.Warning("YooAsset package is not ready.");
+            if (logWarnings)
+            {
+                FrameLog.Warning("YooAsset package is not ready.");
+            }
+
             return false;
         }
 
@@ -450,22 +411,98 @@ namespace Frame.YooAsset
             parameters.AddParameter(YooAssetRuntime.EFileSystemParameter.DownloadWatchdogTimeout, settings.YooAssetDownloadWatchdogTimeout);
         }
 
-        private static T GetLoadedAsset<T>(string path, YooAssetRuntime.AssetHandle yooHandle, string logPrefix) where T : Object
+        private static T GetLoadedAsset<T>(string path, YooAssetRuntime.AssetHandle yooHandle, string logPrefix, bool logWarnings = true) where T : Object
         {
             if (yooHandle == null || yooHandle.Status != YooAssetRuntime.EOperationStatus.Succeeded)
             {
-                string error = yooHandle == null || string.IsNullOrWhiteSpace(yooHandle.Error) ? "Unknown error." : yooHandle.Error;
-                FrameLog.Warning(logPrefix + ": " + path + " type=" + typeof(T).Name + " error=" + error);
+                if (logWarnings)
+                {
+                    string error = yooHandle == null || string.IsNullOrWhiteSpace(yooHandle.Error) ? "Unknown error." : yooHandle.Error;
+                    FrameLog.Warning(logPrefix + ": " + path + " type=" + typeof(T).Name + " error=" + error);
+                }
+
                 return null;
             }
 
             T asset = yooHandle.GetAssetObject<T>();
-            if (asset == null)
+            if (asset == null && logWarnings)
             {
                 FrameLog.Warning("YooAsset asset type mismatch or null: " + path + " expected=" + typeof(T).Name);
             }
 
             return asset;
+        }
+
+        private bool TryLoadInternal<T>(string path, bool logWarnings, out AssetHandle<T> handle) where T : Object
+        {
+            path = NormalizeLocation(path);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                if (logWarnings)
+                {
+                    FrameLog.Warning("YooAsset location is empty.");
+                }
+
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            if (!EnsurePackageReady(logWarnings))
+            {
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            YooAssetEntry entry;
+            if (cache.TryGetValue(path, out entry) && entry.Asset != null)
+            {
+                T cachedAsset = entry.Asset as T;
+                if (cachedAsset == null)
+                {
+                    if (logWarnings)
+                    {
+                        FrameLog.Warning("YooAsset asset type mismatch: " + path + " expected=" + typeof(T).Name);
+                    }
+
+                    handle = new AssetHandle<T>(this, path, null);
+                    return false;
+                }
+
+                entry.RefCount++;
+                handle = new AssetHandle<T>(this, path, cachedAsset);
+                return true;
+            }
+
+            YooAssetRuntime.AssetHandle yooHandle = null;
+            try
+            {
+                yooHandle = package.LoadAssetSync<T>(path);
+            }
+            catch (Exception exception)
+            {
+                if (logWarnings)
+                {
+                    FrameLog.Exception(exception);
+                }
+            }
+
+            T asset = GetLoadedAsset<T>(path, yooHandle, "YooAsset asset not found", logWarnings);
+            if (asset == null)
+            {
+                ReleaseYooHandle(yooHandle);
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            cache[path] = new YooAssetEntry
+            {
+                Asset = asset,
+                Handle = yooHandle,
+                RefCount = 1
+            };
+
+            handle = new AssetHandle<T>(this, path, asset);
+            return true;
         }
 
         private static void CompleteRequest<T>(AssetRequest<T> request, AssetHandle<T> handle, Action<AssetHandle<T>> completed, string error = null) where T : Object

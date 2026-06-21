@@ -1,421 +1,574 @@
 using System;
 using System.Collections.Generic;
+using Frame.Events;
 
 namespace Frame.StateMachine
 {
     /// <summary>
-    /// A generic finite state machine.
-    ///
-    /// Backward compatible with the original minimal API (<c>Add</c>, <c>Change</c>,
-    /// <c>Tick</c>, <c>Clear</c>, <c>CurrentState</c>, <c>CurrentId</c>) — existing callers
-    /// are unaffected. Production additions:
-    ///   - payload passing on transitions (Change(id, payload) + IPayloadState)
-    ///   - transition guards (IStateGuard: CanExit / CanEnter)
-    ///   - data-driven transitions (AddTransition + automatic evaluation each Tick)
-    ///   - "any state" transitions
-    ///   - previous-state history and RevertToPrevious()
-    ///   - re-entrant Change protection (transitions requested during Enter/Exit are queued)
-    ///   - FixedTick / LateTick forwarding for states that opt in
-    ///   - StateChanged event for observers (UI, audio, analytics)
-    ///   - per-state exception isolation so one faulty Tick cannot kill the machine
-    ///   - optional strict mode that throws instead of returning false on unknown ids
+    /// Animator 风格的分层有限状态机入口。
     /// </summary>
-    public sealed class StateMachine<TStateId>
+    /// <remarks>
+    /// 它持有参数表和多个 Layer。每个 Layer 管理自己的状态图、当前状态路径和转换队列。
+    /// 该状态机是纯 C# 工具，不自动挂接 Unity 生命周期，需要调用方主动调用 <see cref="Tick"/>。
+    /// </remarks>
+    public sealed class StateMachine
     {
-        private readonly Dictionary<TStateId, IState<TStateId>> states;
-        private readonly List<StateTransition<TStateId>> transitions = new List<StateTransition<TStateId>>();
-        private readonly Queue<PendingChange> pendingChanges = new Queue<PendingChange>();
+        /// <summary>
+        /// 默认 Layer 名称。所有便捷 Add、Change、Has 方法都代理到该 Layer。
+        /// </summary>
+        public const string DefaultLayerName = "Base Layer";
 
-        private bool isTransitioning;
-        private bool hasPrevious;
-        private TStateId previousId;
+        /// <summary>
+        /// 按创建顺序保存所有 Layer。
+        /// </summary>
+        private readonly List<StateMachineLayer> layers = new List<StateMachineLayer>();
 
+        /// <summary>
+        /// 按名称索引 Layer，便于通过 layerName 快速查找。
+        /// </summary>
+        private readonly Dictionary<string, StateMachineLayer> layersByName = new Dictionary<string, StateMachineLayer>();
+
+        /// <summary>
+        /// 创建没有事件总线集成的状态机。
+        /// </summary>
         public StateMachine()
-            : this(EqualityComparer<TStateId>.Default)
+            : this(null)
         {
-        }
-
-        /// <param name="comparer">
-        /// Comparer for state ids. Pass a custom one (or none for the default) — supplying
-        /// the default explicitly avoids per-lookup boxing/GC when TStateId is an enum.
-        /// </param>
-        /// <param name="strict">When true, transitions to unknown ids throw instead of returning false.</param>
-        public StateMachine(IEqualityComparer<TStateId> comparer, bool strict = false)
-        {
-            states = new Dictionary<TStateId, IState<TStateId>>(comparer ?? EqualityComparer<TStateId>.Default);
-            Strict = strict;
-        }
-
-        /// <summary>Raised after a state change completes, with (fromId, toId). Exceptions in handlers are isolated.</summary>
-        public event Action<TStateId, TStateId> StateChanged;
-
-        public IState<TStateId> CurrentState { get; private set; }
-
-        public TStateId CurrentId
-        {
-            get { return CurrentState == null ? default(TStateId) : CurrentState.Id; }
-        }
-
-        public bool IsRunning
-        {
-            get { return CurrentState != null; }
-        }
-
-        /// <summary>True while a transition (Exit/Enter) is in progress. Change calls made here are queued.</summary>
-        public bool IsTransitioning
-        {
-            get { return isTransitioning; }
-        }
-
-        public bool Strict { get; set; }
-
-        public int StateCount
-        {
-            get { return states.Count; }
-        }
-
-        // ---- registration -------------------------------------------------
-
-        public void Add(IState<TStateId> state)
-        {
-            if (state == null)
-            {
-                throw new ArgumentNullException("state");
-            }
-
-            states[state.Id] = state;
-
-            StateBase<TStateId> withBackReference = state as StateBase<TStateId>;
-            if (withBackReference != null)
-            {
-                withBackReference.Machine = this;
-            }
-        }
-
-        public bool Has(TStateId id)
-        {
-            return states.ContainsKey(id);
-        }
-
-        public bool TryGetState(TStateId id, out IState<TStateId> state)
-        {
-            return states.TryGetValue(id, out state);
-        }
-
-        /// <summary>Register a conditional transition evaluated automatically on each Tick (in registration order).</summary>
-        public void AddTransition(TStateId from, TStateId to, Func<bool> condition)
-        {
-            transitions.Add(new StateTransition<TStateId>(from, to, condition, false));
-        }
-
-        /// <summary>Register a transition that fires from ANY current state when the condition holds.</summary>
-        public void AddAnyTransition(TStateId to, Func<bool> condition)
-        {
-            transitions.Add(new StateTransition<TStateId>(default(TStateId), to, condition, true));
-        }
-
-        // ---- transitions --------------------------------------------------
-
-        public bool Change(TStateId id)
-        {
-            return Change(id, null);
         }
 
         /// <summary>
-        /// Transition to <paramref name="id"/>, optionally handing <paramref name="payload"/> to the
-        /// target state (if it implements <see cref="IPayloadState"/>). Returns false (or throws in
-        /// strict mode) if the id is unknown or a guard vetoes the transition. If called while a
-        /// transition is already running, the request is queued and applied after the current one settles.
+        /// 创建状态机，并可选绑定事件总线。
         /// </summary>
-        public bool Change(TStateId id, object payload)
+        /// <param name="eventBus">事件总线；为空时只触发本地事件。</param>
+        public StateMachine(IEventBus eventBus)
         {
-            IState<TStateId> next;
-            if (!states.TryGetValue(id, out next))
-            {
-                if (Strict)
-                {
-                    throw new FrameStateMachineException("Unknown state id: " + id);
-                }
-
-                return false;
-            }
-
-            // Re-entrancy: a Change requested from inside Enter/Exit is deferred, not applied
-            // mid-transition. This prevents recursive Exit/Enter stacks and surprising ordering.
-            if (isTransitioning)
-            {
-                pendingChanges.Enqueue(new PendingChange(id, payload));
-                return true;
-            }
-
-            return ApplyChange(next, payload);
+            EventBus = eventBus;
+            Parameters = new StateParameterSet();
+            BaseLayer = CreateLayer(DefaultLayerName);
         }
 
-        private bool ApplyChange(IState<TStateId> next, object payload)
+        /// <summary>
+        /// 任意状态进入后触发的本地事件。
+        /// </summary>
+        public event Action<StateChangeContext> StateEntered;
+
+        /// <summary>
+        /// 任意状态退出后触发的本地事件。
+        /// </summary>
+        public event Action<StateMachineStateExited> StateExited;
+
+        /// <summary>
+        /// 状态完成切换后触发的简化本地事件，兼容只关心 From/To 的使用场景。
+        /// </summary>
+        public event Action<StateChangeContext> StateChanged;
+
+        /// <summary>
+        /// 状态完成切换后触发的详细本地事件，包含触发转换规则。
+        /// </summary>
+        public event Action<StateTransitionContext> Transitioned;
+
+        /// <summary>
+        /// 全局参数表，供所有 Layer 的转换条件共同读取。
+        /// </summary>
+        public StateParameterSet Parameters { get; private set; }
+
+        /// <summary>
+        /// 默认 Layer。单层状态机一般只使用它。
+        /// </summary>
+        public StateMachineLayer BaseLayer { get; private set; }
+
+        /// <summary>
+        /// 可选事件总线。存在时进入、退出、转换会额外发布事件总线事件。
+        /// </summary>
+        public IEventBus EventBus { get; private set; }
+
+        /// <summary>
+        /// 所有 Layer 的只读列表。
+        /// </summary>
+        public IList<StateMachineLayer> Layers
         {
-            if (ReferenceEquals(CurrentState, next))
+            get { return layers.AsReadOnly(); }
+        }
+
+        /// <summary>
+        /// 默认 Layer 当前叶子状态实例。
+        /// </summary>
+        public IState CurrentState
+        {
+            get { return BaseLayer.CurrentState; }
+        }
+
+        /// <summary>
+        /// 默认 Layer 当前叶子状态类型。
+        /// </summary>
+        public Type CurrentStateType
+        {
+            get { return BaseLayer.CurrentStateType; }
+        }
+
+        /// <summary>
+        /// 默认 Layer 是否已经启动。
+        /// </summary>
+        public bool IsRunning
+        {
+            get { return BaseLayer.IsRunning; }
+        }
+
+        /// <summary>
+        /// 任意 Layer 是否正在执行状态切换。
+        /// </summary>
+        public bool IsTransitioning
+        {
+            get
             {
-                return true;
+                for (int i = 0; i < layers.Count; i++)
+                {
+                    if (layers[i].IsTransitioning)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 所有 Layer 中注册的状态总数。
+        /// </summary>
+        public int StateCount
+        {
+            get
+            {
+                int count = 0;
+                for (int i = 0; i < layers.Count; i++)
+                {
+                    count += layers[i].StateCount;
+                }
+
+                return count;
+            }
+        }
+
+        /// <summary>
+        /// 替换事件总线。替换前会取消以当前状态机为 Owner 的订阅。
+        /// </summary>
+        /// <param name="eventBus">新的事件总线；可为空。</param>
+        public void SetEventBus(IEventBus eventBus)
+        {
+            if (EventBus != null && !ReferenceEquals(EventBus, eventBus))
+            {
+                EventBus.UnsubscribeOwner(this);
             }
 
-            TStateId fromId = CurrentId;
+            EventBus = eventBus;
+        }
 
-            // Guards: current state may veto exit; target state may veto entry.
-            IStateGuard<TStateId> exitGuard = CurrentState as IStateGuard<TStateId>;
-            if (exitGuard != null && !exitGuard.CanExit(next.Id))
+        /// <summary>
+        /// 把事件总线中的业务事件绑定为状态机 Trigger。
+        /// </summary>
+        /// <typeparam name="TEvent">业务事件类型。</typeparam>
+        /// <param name="triggerName">要设置的 Trigger 参数名。</param>
+        /// <param name="predicate">可选过滤条件，返回 true 时才设置 Trigger。</param>
+        /// <returns>事件订阅句柄。</returns>
+        public IDisposable BindTrigger<TEvent>(string triggerName, Func<TEvent, bool> predicate = null)
+        {
+            if (EventBus == null)
+            {
+                throw new InvalidOperationException("An EventBus is required before binding events to triggers.");
+            }
+
+            return EventBus.Subscribe<TEvent>(
+                evt =>
+                {
+                    if (predicate == null || predicate(evt))
+                    {
+                        Parameters.SetTrigger(triggerName);
+                    }
+                },
+                this);
+        }
+
+        /// <summary>
+        /// 添加一个新的并行 Layer。
+        /// </summary>
+        /// <param name="name">Layer 名称，必须唯一。</param>
+        /// <returns>新创建的 Layer。</returns>
+        public StateMachineLayer AddLayer(string name)
+        {
+            if (layersByName.ContainsKey(name))
+            {
+                throw new InvalidOperationException("State machine layer already exists: " + name);
+            }
+
+            return CreateLayer(name);
+        }
+
+        /// <summary>
+        /// 移除指定 Layer。默认 Base Layer 不能被移除。
+        /// </summary>
+        /// <param name="name">Layer 名称。</param>
+        /// <returns>成功移除时返回 true。</returns>
+        public bool RemoveLayer(string name)
+        {
+            StateMachineLayer layer;
+            if (!layersByName.TryGetValue(name, out layer))
             {
                 return false;
             }
 
-            IStateGuard<TStateId> enterGuard = next as IStateGuard<TStateId>;
-            if (enterGuard != null && !enterGuard.CanEnter(fromId))
+            if (ReferenceEquals(layer, BaseLayer))
             {
                 return false;
             }
 
-            isTransitioning = true;
-            try
-            {
-                if (CurrentState != null)
-                {
-                    SafeExit(CurrentState);
-                    hasPrevious = true;
-                    previousId = fromId;
-                }
-
-                CurrentState = next;
-                SafeEnter(CurrentState);
-
-                IPayloadState payloadState = CurrentState as IPayloadState;
-                if (payloadState != null)
-                {
-                    SafePayload(payloadState, payload);
-                }
-            }
-            finally
-            {
-                isTransitioning = false;
-            }
-
-            RaiseStateChanged(fromId, next.Id);
-            DrainPendingChanges();
+            layer.Clear();
+            layersByName.Remove(name);
+            layers.Remove(layer);
             return true;
         }
 
-        /// <summary>Return to the state active before the current one. False if there is no history.</summary>
-        public bool RevertToPrevious()
+        /// <summary>
+        /// 获取指定名称的 Layer；不存在时抛异常。
+        /// </summary>
+        public StateMachineLayer GetLayer(string name)
         {
-            if (!hasPrevious)
+            StateMachineLayer layer;
+            if (!layersByName.TryGetValue(name, out layer))
             {
-                return false;
+                throw new InvalidOperationException("State machine layer does not exist: " + name);
             }
 
-            return Change(previousId);
+            return layer;
         }
 
-        public bool HasPrevious
+        /// <summary>
+        /// 尝试获取指定名称的 Layer。
+        /// </summary>
+        public bool TryGetLayer(string name, out StateMachineLayer layer)
         {
-            get { return hasPrevious; }
+            return layersByName.TryGetValue(name, out layer);
         }
 
-        // ---- updates ------------------------------------------------------
+        /// <summary>
+        /// 向默认 Layer 添加状态。
+        /// </summary>
+        public StateNode Add(IState state)
+        {
+            return BaseLayer.AddState(state);
+        }
 
+        /// <summary>
+        /// 向默认 Layer 添加普通转换。
+        /// </summary>
+        public StateTransition AddTransition(Type from, Type to)
+        {
+            return BaseLayer.AddTransition(from, to);
+        }
+
+        /// <summary>
+        /// 向默认 Layer 添加普通转换。
+        /// </summary>
+        public StateTransition AddTransition<TFrom, TTo>()
+            where TFrom : IState
+            where TTo : IState
+        {
+            return BaseLayer.AddTransition<TFrom, TTo>();
+        }
+
+        /// <summary>
+        /// 向默认 Layer 添加 Any State 转换。
+        /// </summary>
+        public StateTransition AddAnyTransition(Type to)
+        {
+            return BaseLayer.AddAnyTransition(to);
+        }
+
+        /// <summary>
+        /// 向默认 Layer 添加 Any State 转换。
+        /// </summary>
+        public StateTransition AddAnyTransition<TTo>() where TTo : IState
+        {
+            return BaseLayer.AddAnyTransition<TTo>();
+        }
+
+        /// <summary>
+        /// 检查默认 Layer 是否注册了指定状态类型。
+        /// </summary>
+        public bool Has(Type stateType)
+        {
+            return BaseLayer.Has(stateType);
+        }
+
+        /// <summary>
+        /// 检查默认 Layer 是否注册了指定状态类型。
+        /// </summary>
+        public bool Has<TState>() where TState : IState
+        {
+            return BaseLayer.Has<TState>();
+        }
+
+        /// <summary>
+        /// 尝试从默认 Layer 获取状态实例。
+        /// </summary>
+        public bool TryGetState(Type stateType, out IState state)
+        {
+            return BaseLayer.TryGetState(stateType, out state);
+        }
+
+        /// <summary>
+        /// 尝试从默认 Layer 获取强类型状态实例。
+        /// </summary>
+        public bool TryGetState<TState>(out TState state) where TState : IState
+        {
+            return BaseLayer.TryGetState<TState>(out state);
+        }
+
+        /// <summary>
+        /// 尝试从默认 Layer 获取状态节点。
+        /// </summary>
+        public bool TryGetNode(Type stateType, out StateNode node)
+        {
+            return BaseLayer.TryGetNode(stateType, out node);
+        }
+
+        /// <summary>
+        /// 尝试从默认 Layer 获取状态节点。
+        /// </summary>
+        public bool TryGetNode<TState>(out StateNode node) where TState : IState
+        {
+            return BaseLayer.TryGetNode<TState>(out node);
+        }
+
+        /// <summary>
+        /// 启动所有启用的 Layer，进入各自根状态图的 Entry 状态。
+        /// </summary>
+        /// <returns>至少有一个 Layer 成功启动时返回 true。</returns>
+        public bool Start()
+        {
+            bool started = false;
+            for (int i = 0; i < layers.Count; i++)
+            {
+                started |= layers[i].Start();
+            }
+
+            return started;
+        }
+
+        /// <summary>
+        /// 切换默认 Layer 到指定状态。
+        /// </summary>
+        public bool Change(Type stateType)
+        {
+            return BaseLayer.Change(stateType);
+        }
+
+        /// <summary>
+        /// 切换默认 Layer 到指定状态。
+        /// </summary>
+        public bool Change<TState>() where TState : IState
+        {
+            return BaseLayer.Change<TState>();
+        }
+
+        /// <summary>
+        /// 切换默认 Layer 到指定状态，并传入业务参数。
+        /// </summary>
+        public bool Change(Type stateType, object parameter)
+        {
+            return BaseLayer.Change(stateType, parameter);
+        }
+
+        /// <summary>
+        /// 切换默认 Layer 到指定状态，并传入业务参数。
+        /// </summary>
+        public bool Change<TState>(object parameter) where TState : IState
+        {
+            return BaseLayer.Change<TState>(parameter);
+        }
+
+        /// <summary>
+        /// 切换指定 Layer 到指定状态。
+        /// </summary>
+        public bool Change(string layerName, Type stateType)
+        {
+            return GetLayer(layerName).Change(stateType);
+        }
+
+        /// <summary>
+        /// 切换指定 Layer 到指定状态。
+        /// </summary>
+        public bool ChangeInLayer<TState>(string layerName) where TState : IState
+        {
+            return GetLayer(layerName).Change<TState>();
+        }
+
+        /// <summary>
+        /// 切换指定 Layer 到指定状态，并传入业务参数。
+        /// </summary>
+        public bool Change(string layerName, Type stateType, object parameter)
+        {
+            return GetLayer(layerName).Change(stateType, parameter);
+        }
+
+        /// <summary>
+        /// 切换指定 Layer 到指定状态，并传入业务参数。
+        /// </summary>
+        public bool ChangeInLayer<TState>(string layerName, object parameter) where TState : IState
+        {
+            return GetLayer(layerName).Change<TState>(parameter);
+        }
+
+        /// <summary>
+        /// 驱动所有 Layer。未启动的启用 Layer 会在 Tick 中自动进入 Entry。
+        /// </summary>
+        /// <param name="deltaTime">由调用方传入的时间增量。</param>
         public void Tick(float deltaTime)
         {
-            // Evaluate data-driven transitions first; if one fires, the new state ticks this frame.
-            EvaluateTransitions();
-
-            if (CurrentState != null)
+            for (int i = 0; i < layers.Count; i++)
             {
-                SafeTick(CurrentState, deltaTime);
+                layers[i].Tick(deltaTime);
             }
         }
 
-        public void FixedTick(float fixedDeltaTime)
-        {
-            IFixedTickState fixedState = CurrentState as IFixedTickState;
-            if (fixedState == null)
-            {
-                return;
-            }
-
-            try
-            {
-                fixedState.FixedTick(fixedDeltaTime);
-            }
-            catch (Exception exception)
-            {
-                throw Wrap(exception, "FixedTick");
-            }
-        }
-
-        public void LateTick(float deltaTime)
-        {
-            ILateTickState lateState = CurrentState as ILateTickState;
-            if (lateState == null)
-            {
-                return;
-            }
-
-            try
-            {
-                lateState.LateTick(deltaTime);
-            }
-            catch (Exception exception)
-            {
-                throw Wrap(exception, "LateTick");
-            }
-        }
-
-        private void EvaluateTransitions()
-        {
-            if (transitions.Count == 0 || CurrentState == null || isTransitioning)
-            {
-                return;
-            }
-
-            for (int i = 0; i < transitions.Count; i++)
-            {
-                StateTransition<TStateId> transition = transitions[i];
-                bool sourceMatches = transition.FromAny || states.Comparer.Equals(transition.From, CurrentId);
-                if (!sourceMatches)
-                {
-                    continue;
-                }
-
-                bool conditionMet;
-                try
-                {
-                    conditionMet = transition.Condition();
-                }
-                catch (Exception exception)
-                {
-                    throw Wrap(exception, "transition condition");
-                }
-
-                if (conditionMet && !states.Comparer.Equals(transition.To, CurrentId))
-                {
-                    Change(transition.To);
-                    return; // re-evaluate next frame from the new state
-                }
-            }
-        }
-
-        // ---- teardown -----------------------------------------------------
-
+        /// <summary>
+        /// 清空状态机：取消事件总线订阅、退出并清空所有 Layer、清空参数，再创建新的默认 Layer。
+        /// </summary>
         public void Clear()
         {
-            if (CurrentState != null)
+            if (EventBus != null)
             {
-                SafeExit(CurrentState);
+                EventBus.UnsubscribeOwner(this);
             }
 
-            CurrentState = null;
-            hasPrevious = false;
-            previousId = default(TStateId);
-            pendingChanges.Clear();
-            states.Clear();
-            transitions.Clear();
-            StateChanged = null;
+            for (int i = 0; i < layers.Count; i++)
+            {
+                layers[i].Clear();
+            }
+
+            layers.Clear();
+            layersByName.Clear();
+            Parameters.Clear();
+            BaseLayer = CreateLayer(DefaultLayerName);
         }
 
-        // ---- internals ----------------------------------------------------
-
-        private void DrainPendingChanges()
+        /// <summary>
+        /// 设置 Float 参数的便捷方法。
+        /// </summary>
+        public void SetFloat(string name, float value)
         {
-            while (pendingChanges.Count > 0 && !isTransitioning)
-            {
-                PendingChange pending = pendingChanges.Dequeue();
-                IState<TStateId> next;
-                if (states.TryGetValue(pending.Id, out next))
-                {
-                    ApplyChange(next, pending.Payload);
-                }
-            }
+            Parameters.SetFloat(name, value);
         }
 
-        private void RaiseStateChanged(TStateId fromId, TStateId toId)
+        /// <summary>
+        /// 设置 Int 参数的便捷方法。
+        /// </summary>
+        public void SetInt(string name, int value)
         {
-            Action<TStateId, TStateId> handler = StateChanged;
-            if (handler == null)
-            {
-                return;
-            }
-
-            try
-            {
-                handler(fromId, toId);
-            }
-            catch (Exception exception)
-            {
-                throw Wrap(exception, "StateChanged handler");
-            }
+            Parameters.SetInt(name, value);
         }
 
-        private void SafeEnter(IState<TStateId> state)
+        /// <summary>
+        /// 设置 Bool 参数的便捷方法。
+        /// </summary>
+        public void SetBool(string name, bool value)
         {
-            try
-            {
-                state.Enter();
-            }
-            catch (Exception exception)
-            {
-                throw Wrap(exception, "Enter");
-            }
+            Parameters.SetBool(name, value);
         }
 
-        private void SafeExit(IState<TStateId> state)
+        /// <summary>
+        /// 设置 Trigger 参数的便捷方法。
+        /// </summary>
+        public void SetTrigger(string name)
         {
-            try
-            {
-                state.Exit();
-            }
-            catch (Exception exception)
-            {
-                throw Wrap(exception, "Exit");
-            }
+            Parameters.SetTrigger(name);
         }
 
-        private void SafeTick(IState<TStateId> state, float deltaTime)
+        /// <summary>
+        /// 重置 Trigger 参数的便捷方法。
+        /// </summary>
+        public void ResetTrigger(string name)
         {
-            try
+            Parameters.ResetTrigger(name);
+        }
+
+        /// <summary>
+        /// 通知状态进入，并同步发布本地事件和事件总线事件。
+        /// </summary>
+        internal void NotifyStateEntered(StateChangeContext context)
+        {
+            Action<StateChangeContext> handler = StateEntered;
+            if (handler != null)
             {
-                state.Tick(deltaTime);
+                handler(context);
             }
-            catch (Exception exception)
+
+            if (EventBus != null)
             {
-                throw Wrap(exception, "Tick");
+                EventBus.Publish(new StateMachineStateEntered(context));
             }
         }
 
-        private static void SafePayload(IPayloadState state, object payload)
+        /// <summary>
+        /// 通知状态退出，并同步发布本地事件和事件总线事件。
+        /// </summary>
+        internal void NotifyStateExited(StateMachineLayer layer, Type stateType, Type to, bool hasTo)
         {
-            try
+            StateMachineStateExited evt = new StateMachineStateExited(this, layer.Name, stateType, to, hasTo);
+
+            Action<StateMachineStateExited> handler = StateExited;
+            if (handler != null)
             {
-                state.OnEnterWithPayload(payload);
+                handler(evt);
             }
-            catch (Exception exception)
+
+            if (EventBus != null)
             {
-                throw Wrap(exception, "OnEnterWithPayload");
+                EventBus.Publish(evt);
             }
         }
 
-        private static FrameStateMachineException Wrap(Exception inner, string phase)
+        /// <summary>
+        /// 通知状态切换完成，并同步发布兼容事件、详细事件和事件总线事件。
+        /// </summary>
+        internal void NotifyTransitioned(StateTransitionContext context)
         {
-            return new FrameStateMachineException("State machine failed during " + phase + ".", inner);
-        }
+            StateChangeContext changeContext = new StateChangeContext(
+                this,
+                context.LayerName,
+                context.From,
+                context.To,
+                context.Parameter,
+                context.HasFrom,
+                context.HasParameter);
 
-        private struct PendingChange
-        {
-            public PendingChange(TStateId id, object payload)
+            Action<StateChangeContext> changedHandler = StateChanged;
+            if (changedHandler != null)
             {
-                Id = id;
-                Payload = payload;
+                changedHandler(changeContext);
             }
 
-            public TStateId Id { get; private set; }
+            Action<StateTransitionContext> transitionedHandler = Transitioned;
+            if (transitionedHandler != null)
+            {
+                transitionedHandler(context);
+            }
 
-            public object Payload { get; private set; }
+            if (EventBus != null)
+            {
+                EventBus.Publish(new StateMachineTransitioned(context));
+            }
+        }
+
+        /// <summary>
+        /// 创建 Layer 并加入索引。
+        /// </summary>
+        private StateMachineLayer CreateLayer(string name)
+        {
+            StateMachineLayer layer = new StateMachineLayer(this, name);
+            layers.Add(layer);
+            layersByName.Add(name, layer);
+            return layer;
         }
     }
 }

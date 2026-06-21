@@ -34,7 +34,7 @@ Assets/
     Runtime/Save                  JSON/二进制存档服务
     Runtime/Preferences           PlayerPrefs 用户偏好设置
     Runtime/Input                 InputSystem/Legacy 输入适配
-    Runtime/Networking            UnityWebRequest HTTP 封装
+    Runtime/Networking            UnityWebRequest HTTP、TCP Socket 和 WebSocket 封装
     Runtime/Localization          轻量本地化文本表
     Runtime/StateMachine          通用状态机
     Runtime/Utilities             路径、释放等工具
@@ -337,6 +337,7 @@ timers.NextFrame(RefreshLayout, this);
 - `AddressablesAssetService` 使用 Addressables address 作为 key，底层持有 `AsyncOperationHandle`，引用计数归零时调用 `Addressables.Release`。
 - `YooAssetAssetService` 使用 YooAsset location 作为 key，初始化指定 package 后持有 `YooAsset.AssetHandle`，引用计数归零时调用 YooAsset handle `Release()`。
 - 三个后端都维护缓存和引用计数，`AssetHandle<T>.Release()` 会减少引用计数。
+- `TryLoad<T>(path, out handle)` 用于静默尝试加载资源；普通业务需要缺失资源告警时继续使用 `Load<T>()`。
 - `AssetRequest<T>` 暴露 `Success`、`Error`、`Progress` 和 `Cancel()`，可用于 Loading UI、超时策略和流程取消。
 - `IsLoaded()`、`GetReferenceCount()`、`GetLoadedAssetStats()` 和 `ReleaseAll()` 可用于定位资源泄漏和切场景时清理资源。
 - `Instantiate(path)` 会先加载 prefab，并在实例上挂 `AssetInstanceLease`，实例销毁时自动释放资源句柄，避免 Addressables/YooAsset 依赖被提前卸载。
@@ -747,11 +748,13 @@ if (preferences.TryGetJson("graphics.options", out GraphicsOptions loaded))
 
 ## Config 模块
 
-`ConfigService` 统一从多个 provider 读取配置。
+`ConfigService` 统一从多个 provider 读取配置。默认配置资源通过当前 `IAssetService` 加载，不在 Config 模块内直接调用 `Resources.Load`。
 
 实现方式：
 
-- 默认注册 `ResourcesJsonConfigProvider`，根目录为 `Resources/Configs`。
+- 如果已启用 `IAssetService`，默认注册 `AssetScriptableConfigProvider` 和 `AssetJsonConfigProvider`，根目录为逻辑路径 `Configs`。
+- `AssetJsonConfigProvider` 读取 `Configs/{key}` 对应的 `TextAsset` 并用 Newtonsoft.Json 反序列化；Resources 后端下对应 `Resources/Configs/{key}.json`。
+- `AssetScriptableConfigProvider` 只处理 `ScriptableConfig` 派生类型，按 `Configs/{key}` 路径加载单个资产，不再扫描整个 `Resources/Configs`。
 - 外部可注册自定义 `IConfigProvider`。
 - 新 provider 插入到列表开头，因此优先级高于默认 provider。
 - `RuntimeJsonConfigProvider` 可在运行时注入 JSON 覆盖配置，适合远程配置、灰度配置和热更新覆盖。
@@ -820,7 +823,7 @@ public sealed class ValidatedItemConfig : IConfigValidator
 }
 ```
 
-对应路径：
+Resources 后端对应路径：
 
 ```text
 Assets/Game/Resources/Configs/Items/sword_001.json
@@ -834,9 +837,9 @@ Assets/Game/Resources/Configs/Items/sword_001.json
 
 ## Networking 模块
 
-`HttpService` 是 `UnityWebRequest` 的轻量封装。
+Networking 模块包含两类能力：`HttpService` 负责短连接 HTTP 请求，`SocketService` 负责 TCP Socket 和 WebSocket 长连接。两者独立注册，分别由 `FrameSettings.EnableHttpService` 和 `FrameSettings.EnableSocketService` 控制。
 
-实现方式：
+HTTP 实现方式：
 
 - `Get` 和 `PostJson` 是便捷入口。
 - `Send(HttpRequest, completed)` 支持 method、body、content-type、headers、timeout、retries、retryDelay。
@@ -931,7 +934,7 @@ request.Headers["Authorization"] = "Bearer token";
 HttpRequestHandle handle = http.Send(request, OnCompleted);
 ```
 
-网络诊断：
+HTTP 诊断：
 
 ```csharp
 http.RequestCompleted += (request, response) =>
@@ -942,12 +945,66 @@ http.RequestCompleted += (request, response) =>
 Debug.Log($"{http.ActiveRequestCount} active, {http.FailedRequestCount} failed");
 ```
 
+Socket 长连接：
+
+- `ISocketService.CreateTcpClient(host, port)` 创建 TCP 客户端，默认使用 4 字节大端长度前缀协议解决 TCP 粘包/拆包。
+- `ISocketService.CreateWebSocketClient(url)` 创建 WebSocket 客户端，支持 `ws://` 和 `wss://`。
+- `SocketClientOptions` 可配置 TLS、连接超时、接收缓冲、最大消息大小、发送队列上限、自动重连、心跳、WebSocket header 和 sub-protocol。
+- `ISocketClient` 暴露 `StateChanged`、`Connected`、`Disconnected`、`Reconnecting`、`MessageReceived` 和 `Error` 事件。
+- `SocketClientMetrics` 提供 sent/received/dropped/reconnect 计数，Runtime Diagnostics Overlay 会展示 Socket 客户端数量、活跃连接数和基础收发指标。
+- 非 WebSocket 的 TCP 流必须有项目协议编解码器；默认 `LengthPrefixedSocketCodec` 适合二进制包或 UTF-8 文本包，业务可实现 `ISocketMessageCodec` 替换。
+
+TCP 示例：
+
+```csharp
+ISocketService sockets = Framework.Resolve<ISocketService>();
+ISocketClient client = sockets.CreateTcpClient("127.0.0.1", 9000, options =>
+{
+    options.AutoReconnect = true;
+    options.MaxReconnectAttempts = -1;
+    options.HeartbeatIntervalSeconds = 10f;
+    options.HeartbeatTimeoutSeconds = 30f;
+    options.HeartbeatPayload = System.Text.Encoding.UTF8.GetBytes("ping");
+});
+
+client.Connected += socket => Debug.Log("socket connected");
+client.Disconnected += (socket, info) => Debug.Log($"socket closed: {info.Reason} {info.Error}");
+client.MessageReceived += (socket, message) => Debug.Log(message.Text);
+
+await client.ConnectAsync();
+client.SendText("hello");
+```
+
+WebSocket 示例：
+
+```csharp
+ISocketClient realtime = sockets.CreateWebSocketClient("wss://example.com/realtime", options =>
+{
+    options.WebSocketHeaders = new Dictionary<string, string>
+    {
+        ["Authorization"] = "Bearer " + accessToken
+    };
+    options.WebSocketSubProtocols = new List<string> { "game.v1" };
+});
+
+await realtime.ConnectAsync();
+realtime.SendText("{\"op\":\"join\",\"room\":\"lobby\"}");
+```
+
+Socket 关闭：
+
+```csharp
+await client.DisconnectAsync();
+sockets.RemoveClient(client);
+```
+
 生产建议：
 
 - 需要按项目补鉴权刷新、环境切换、埋点和限流。
 - 业务后端如果不是 `{ code, message, data }` 风格，可实现 `IHttpResponseParser` 接入项目协议。
 - 错误码到用户提示、重登、重试或静默忽略的策略仍建议放在业务网络门面层。
-- 对长连接、WebSocket、RPC、可靠消息，本模块不覆盖。
+- Socket 层只负责连接、收发、重连和基础编解码；登录态刷新、业务 ack、可靠消息、RPC 映射、消息去重和序列化协议仍应放在项目网络门面层。
+- WebGL 平台不能使用 .NET `TcpClient`/`ClientWebSocket`，需要浏览器 WebSocket bridge 或单独的 WebGL transport 实现。
 
 ## Pooling 模块
 
@@ -1194,7 +1251,7 @@ tweens.Kill(transform);
 - 外部通过 `AddTable(LocalizedTextTable)` 注册一张或多张多语言表，后注册的表可以覆盖先注册表中的同名 key。
 - `RemoveTable()` 和 `ClearTables()` 可用于卸载活动、DLC 或远程语言包。
 - `LocalizedTextTable` 支持 `key,en,zh,ja` 这种第一列 key、后续列为 locale 的表格结构。
-- `LocalizedTextTable` 可以在 Inspector 中直接引用 Excel 导出的 CSV/TSV `TextAsset`，也可以通过 `SetSource`、`ImportCsv`、`ImportTsv`、`SetValue` 在代码中构建。
+- `LocalizedTextTable` 可以在 Inspector 中直接引用 Excel 导出的 CSV/TSV `TextAsset`，也可以通过 `SetSource`、`ImportCsv`、`ImportTsv` 导入整张表格文本。
 - `LocalizedTextTable` 在运行时懒构建 `locale -> key -> value` 字典缓存，单表查找复杂度为 O(1)。
 - `LocalizedText` 组件可挂在 UGUI `Text` 上，填写 key 后会在启用和语言切换时自动刷新文本。
 - `Translate()` 支持 `string.Format` 风格参数。
@@ -1239,34 +1296,38 @@ UGUI 文本自动本地化：
 
 ## StateMachine 模块
 
-状态机是纯 C# 工具，不依赖 Unity 生命周期（需调用方在 `Update/FixedUpdate/LateUpdate` 中手动驱动）。
-泛型参数 `TStateId` 可用枚举、字符串、int 等任意类型。
+状态机是纯 C# 工具，不依赖 Unity 生命周期（需调用方在 `Update` 中手动驱动）。它参考 Unity Animator Controller 的组织方式，支持参数、条件转换、Any State、Exit Time、子状态机和多 Layer。
 
 典型用法：
 
 ```csharp
-// 状态实现 IState<TStateId>，或继承 StateBase<TStateId> 只重写需要的钩子
-StateMachine<string> machine = new StateMachine<string>();
-machine.Add(idleState);     // 按 state.Id 注册
-machine.Add(battleState);
-machine.Change("Idle");
-machine.Tick(Time.deltaTime);          // 在 Update 里调用
+// 状态实现 IState，或继承 StateBase 只重写需要的钩子
+StateMachine machine = new StateMachine();
+machine.Add(new IdleState()).WithLength(1f); // 按状态实例的运行时 Type 注册；Length 用于 Exit Time
+machine.Add(runState);
+machine.AddTransition<IdleState, RunState>()
+    .When(StateCondition.Greater("Speed", 0.1f));
+machine.AddAnyTransition<HitState>()
+    .When(StateCondition.Trigger("Damaged"));
+
+machine.Change<IdleState>();                // 也可 Change(typeof(IdleState))
+machine.SetFloat("Speed", inputSpeed);
+machine.SetTrigger("Damaged");
+machine.Tick(Time.deltaTime);               // 在 Update 里调用
 ```
 
-生产级能力（均向后兼容，旧的 `Add/Change/Tick/Clear` 行为不变）：
+核心能力：
 
-- **携带数据切换**：`machine.Change("Hurt", damage)`，目标状态实现 `IPayloadState.OnEnterWithPayload` 即可接收。
-- **转换守卫**：状态实现 `IStateGuard<T>`，用 `CanExit/CanEnter` 否决非法切换。
-- **数据驱动转换**：`machine.AddTransition("Idle", "Run", () => input.IsMoving)`，每次 `Tick` 自动评估；`AddAnyTransition("Death", () => hp <= 0)` 从任意状态触发。
-- **历史回退**：`machine.RevertToPrevious()` 返回上一个状态（如暂停菜单返回）。
-- **转换事件**：`machine.StateChanged += (from, to) => ...`，给 UI/音效/埋点挂钩。
-- **物理/后期帧**：状态实现 `IFixedTickState` / `ILateTickState`，由调用方转发 `FixedTick` / `LateTick`。
-- **防重入**：在 `Enter/Exit` 内调用 `Change` 会被排队，不会递归炸栈。
-- **异常隔离 + 严格模式**：状态回调抛出的异常被包成 `FrameStateMachineException`（保留 InnerException）；`new StateMachine<T>(comparer, strict: true)` 下未知 id 直接抛异常而非静默返回 false。
+- **Animator 风格参数**：`SetFloat/SetInt/SetBool/SetTrigger`，转换用 `StateCondition` 判断，Trigger 在命中转换后自动消耗。
+- **转换规则**：普通转换、`AddAnyTransition`、`WithExitTime`、`WithDuration`、优先级、可选自切换。
+- **分层和嵌套**：`AddLayer("UpperBody")` 创建并行 Layer；`StateNode.CreateChildMachine()` 创建子状态机，进入父状态时自动进入子状态机默认状态。
+- **类型作为状态标识**：注册状态时直接使用状态实例的运行时 `Type`，切换可用 `Change<TState>()` 或 `Change(typeof(TState))`，避免字符串拼写错误。
+- **统一进入上下文**：`Change<TState>(parameter)` 会把 `StateChangeContext` 传给目标状态的 `Enter(context)`，包含 Machine、LayerName、From、To、Parameter 等信息。
+- **事件中心集成**：构造时传入 `IEventBus` 后会发布 `StateMachineStateEntered`、`StateMachineStateExited`、`StateMachineTransitioned`；也可用 `BindTrigger<TEvent>("TriggerName")` 把事件转换成状态机 Trigger。
+- **防重入**：在 `Enter/Exit/Tick` 内调用 `Change` 会被排队，不会递归执行切换或破坏当前 Tick 遍历。
 
 适合：角色 AI、UI 流程、游戏阶段/关卡流程、局部玩法状态。
 
-性能提示：状态 id 为枚举时，用 `new StateMachine<MyEnum>(EqualityComparer<MyEnum>.Default)` 避免字典查找的装箱开销。
 
 ## Editor 工具
 

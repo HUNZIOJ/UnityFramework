@@ -41,6 +41,7 @@ namespace Frame.Core
         [SerializeField] private bool enableConfigService = true;
         [SerializeField] private bool enableInputService = true;
         [SerializeField] private bool enableHttpService = true;
+        [SerializeField] private bool enableSocketService = true;
         [SerializeField] private bool enableLocalizationService = true;
 
         [Header("Assets")]
@@ -198,6 +199,11 @@ namespace Frame.Core
         public bool EnableHttpService
         {
             get { return enableHttpService; }
+        }
+
+        public bool EnableSocketService
+        {
+            get { return enableSocketService; }
         }
 
         public bool EnableLocalizationService

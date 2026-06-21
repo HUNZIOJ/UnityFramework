@@ -290,6 +290,11 @@ namespace Frame.Core
                 modules.Add(new HttpService());
             }
 
+            if (settings.EnableSocketService)
+            {
+                modules.Add(new SocketService());
+            }
+
             if (settings.EnableLocalizationService)
             {
                 modules.Add(new LocalizationService());

@@ -1,3 +1,4 @@
+using Frame.Assets;
 using Frame.Config;
 using NUnit.Framework;
 using UnityEngine;
@@ -8,9 +9,9 @@ namespace Frame.Tests.EditMode
     public sealed class ConfigModuleTests
     {
         [Test]
-        public void ResourcesJsonConfigProvider_LoadsJsonFromResources()
+        public void AssetJsonConfigProvider_LoadsJsonThroughAssetService()
         {
-            ResourcesJsonConfigProvider provider = new ResourcesJsonConfigProvider("Configs");
+            AssetJsonConfigProvider provider = new AssetJsonConfigProvider(new ResourcesAssetService(), "Configs");
 
             Assert.IsTrue(provider.TryLoad("FrameTests/item", out ItemConfig config));
             Assert.AreEqual("item_001", config.Id);
@@ -87,10 +88,11 @@ namespace Frame.Tests.EditMode
         }
 
         [Test]
-        public void RuntimeJsonConfigProvider_OverridesResourcesAndInvalidatesCache()
+        public void RuntimeJsonConfigProvider_OverridesAssetsAndInvalidatesCache()
         {
             using (FrameTestFixture fixture = new FrameTestFixture())
             {
+                fixture.Initialize(new ResourcesAssetService());
                 ConfigService service = fixture.Initialize(new ConfigService());
                 RuntimeJsonConfigProvider provider = new RuntimeJsonConfigProvider();
                 provider.SetJson("FrameTests/item.json", "{\"Id\":\"remote_001\",\"Name\":\"Remote Sword\",\"Power\":20}");
@@ -143,11 +145,11 @@ namespace Frame.Tests.EditMode
         }
 
         [Test]
-        public void ResourcesScriptableConfigProvider_LoadsScriptableConfigsFromResources()
+        public void AssetScriptableConfigProvider_LoadsScriptableConfigsThroughAssetService()
         {
-            ResourcesScriptableConfigProvider provider = new ResourcesScriptableConfigProvider("Configs");
+            AssetScriptableConfigProvider provider = new AssetScriptableConfigProvider(new ResourcesAssetService(), "Configs");
 
-            Assert.IsTrue(provider.TryLoad("resource_scriptable", out TestScriptableConfig loaded));
+            Assert.IsTrue(provider.TryLoad("FrameTests/resource_scriptable", out TestScriptableConfig loaded));
             Assert.AreEqual("resource_scriptable", loaded.Id);
         }
 

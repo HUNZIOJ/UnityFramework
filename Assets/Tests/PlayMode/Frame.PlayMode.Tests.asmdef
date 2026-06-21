@@ -3,7 +3,8 @@
   "rootNamespace": "Frame.Tests.PlayMode",
   "references": [
     "Frame.Runtime",
-    "Frame.DOTween"
+    "Frame.DOTween",
+    "UniTask"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

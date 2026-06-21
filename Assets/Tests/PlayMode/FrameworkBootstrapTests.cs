@@ -57,6 +57,7 @@ namespace Frame.Tests.PlayMode
             Assert.IsTrue(Framework.TryResolve(out ISaveService _));
             Assert.IsTrue(Framework.TryResolve(out IConfigService _));
             Assert.IsTrue(Framework.TryResolve(out IHttpService _));
+            Assert.IsTrue(Framework.TryResolve(out ISocketService _));
             Assert.IsTrue(Framework.TryResolve(out ILocalizationService _));
 
             Framework.Start();

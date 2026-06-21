@@ -26,35 +26,14 @@ namespace Frame.Assets
 
         public AssetHandle<T> Load<T>(string path) where T : Object
         {
-            path = FramePathUtility.NormalizeResourcesPath(path);
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                FrameLog.Warning("Resources path is empty.");
-                return new AssetHandle<T>(this, path, null);
-            }
+            AssetHandle<T> handle;
+            TryLoadInternal(path, true, out handle);
+            return handle;
+        }
 
-            Object asset;
-            if (!cache.TryGetValue(path, out asset) || asset == null)
-            {
-                asset = Resources.Load<T>(path);
-                if (asset == null)
-                {
-                    FrameLog.Warning("Resources asset not found: " + path + " type=" + typeof(T).Name);
-                    return new AssetHandle<T>(this, path, null);
-                }
-
-                cache[path] = asset;
-            }
-
-            T typedAsset = asset as T;
-            if (typedAsset == null)
-            {
-                FrameLog.Warning("Resources asset type mismatch: " + path + " expected=" + typeof(T).Name);
-                return new AssetHandle<T>(this, path, null);
-            }
-
-            AddRef(path);
-            return new AssetHandle<T>(this, path, typedAsset);
+        public bool TryLoad<T>(string path, out AssetHandle<T> handle) where T : Object
+        {
+            return TryLoadInternal(path, false, out handle);
         }
 
         public AssetRequest<T> LoadAsync<T>(string path, Action<AssetHandle<T>> completed = null) where T : Object
@@ -187,6 +166,55 @@ namespace Frame.Assets
             cache.Clear();
             refCounts.Clear();
             Resources.UnloadUnusedAssets();
+        }
+
+        private bool TryLoadInternal<T>(string path, bool logWarnings, out AssetHandle<T> handle) where T : Object
+        {
+            path = FramePathUtility.NormalizeResourcesPath(path);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                if (logWarnings)
+                {
+                    FrameLog.Warning("Resources path is empty.");
+                }
+
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            Object asset;
+            if (!cache.TryGetValue(path, out asset) || asset == null)
+            {
+                asset = Resources.Load<T>(path);
+                if (asset == null)
+                {
+                    if (logWarnings)
+                    {
+                        FrameLog.Warning("Resources asset not found: " + path + " type=" + typeof(T).Name);
+                    }
+
+                    handle = new AssetHandle<T>(this, path, null);
+                    return false;
+                }
+
+                cache[path] = asset;
+            }
+
+            T typedAsset = asset as T;
+            if (typedAsset == null)
+            {
+                if (logWarnings)
+                {
+                    FrameLog.Warning("Resources asset type mismatch: " + path + " expected=" + typeof(T).Name);
+                }
+
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            AddRef(path);
+            handle = new AssetHandle<T>(this, path, typedAsset);
+            return true;
         }
 
         private async UniTaskVoid LoadAsyncTask<T>(string path, AssetRequest<T> request, Action<AssetHandle<T>> completed) where T : Object

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Frame.Assets;
 using Frame.Core;
 
 namespace Frame.Config
@@ -18,8 +19,13 @@ namespace Frame.Config
 
         protected override void OnInitialize()
         {
-            providers.Add(new ResourcesScriptableConfigProvider());
-            providers.Add(new ResourcesJsonConfigProvider());
+            IAssetService assets;
+            if (Context.Services.TryResolve(out assets))
+            {
+                providers.Add(new AssetScriptableConfigProvider(assets));
+                providers.Add(new AssetJsonConfigProvider(assets));
+            }
+
             Context.Services.Register<IConfigService>(this);
             Context.Services.Register(this);
         }

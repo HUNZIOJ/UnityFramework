@@ -24,6 +24,7 @@ namespace Frame.Diagnostics
         private IDiagnosticsService diagnostics;
         private ILifecycleService lifecycle;
         private IHttpService http;
+        private ISocketService sockets;
         private IAssetService assets;
         private IPoolService pools;
         private ISceneService scenes;
@@ -107,6 +108,7 @@ namespace Frame.Diagnostics
             DrawSnapshot();
             DrawLifecycle();
             DrawHttp();
+            DrawSockets();
             DrawTimers();
             DrawScenes();
             DrawAssets();
@@ -144,6 +146,30 @@ namespace Frame.Diagnostics
             }
 
             GUILayout.Label("Active: " + http.ActiveRequestCount + "  Started: " + http.StartedRequestCount + "  Completed: " + http.CompletedRequestCount + "  Failed: " + http.FailedRequestCount);
+        }
+
+        private void DrawSockets()
+        {
+            GUILayout.Space(8f);
+            GUILayout.Label("Sockets");
+            if (sockets == null)
+            {
+                GUILayout.Label("Socket service is not available.");
+                return;
+            }
+
+            GUILayout.Label("Clients: " + sockets.Clients.Count + "  Active: " + sockets.ActiveConnectionCount);
+            for (int i = 0; i < sockets.Clients.Count; i++)
+            {
+                ISocketClient client = sockets.Clients[i];
+                if (client == null)
+                {
+                    continue;
+                }
+
+                SocketClientMetrics metrics = client.Metrics;
+                GUILayout.Label(client.Id + "  " + client.Options.Transport + "  " + client.State + "  sent=" + metrics.SentMessages + " recv=" + metrics.ReceivedMessages + " drop=" + metrics.DroppedMessages);
+            }
         }
 
         private void DrawLifecycle()
@@ -281,6 +307,7 @@ namespace Frame.Diagnostics
             Framework.TryResolve(out diagnostics);
             Framework.TryResolve(out lifecycle);
             Framework.TryResolve(out http);
+            Framework.TryResolve(out sockets);
             Framework.TryResolve(out assets);
             Framework.TryResolve(out pools);
             Framework.TryResolve(out scenes);

@@ -9,6 +9,8 @@ namespace Frame.Assets
     {
         AssetHandle<T> Load<T>(string path) where T : Object;
 
+        bool TryLoad<T>(string path, out AssetHandle<T> handle) where T : Object;
+
         AssetRequest<T> LoadAsync<T>(string path, Action<AssetHandle<T>> completed = null) where T : Object;
 
         GameObject Instantiate(string path, Transform parent = null, bool worldPositionStays = false);

@@ -48,9 +48,9 @@ EditMode 测试主要覆盖纯逻辑和无需真实帧循环的模块。PlayMode
 - JSON 存档、备份恢复、自定义 serializer、slot 校验、列表和删除。
 - PlayerPrefs 偏好设置、基础类型、JSON 值、删除和变更事件。
 - InputContext、InputSystem/Legacy 条件接口和 InputSystem 绑定覆盖保存/加载。
-- HTTP 空 URL、取消、失败响应、重试、typed JSON、envelope 响应解析和回调异常隔离。
+- HTTP 空 URL、取消、失败响应、重试、typed JSON、envelope 响应解析和回调异常隔离；Socket 长度前缀编解码、本地 TCP echo、本地 WebSocket echo 和 client 创建/移除。
 - 本地化表、语言切换、fallback、缺失 key 和字典缓存。
-- 通用状态机的进入、Tick、退出、重复切换、缺失状态和清理。
+- 通用状态机的进入、Tick、退出、重复切换、缺失状态、清理。
 - 路径工具和一次性释放工具。
 - DOTween 值动画、Transform 移动、缩放、CanvasGroup 淡入淡出、Kill 和空句柄安全性。
 
@@ -97,7 +97,7 @@ PlayMode：
 
 ## Notes
 
-- `NetworkingModuleTests` 不依赖外部网络服务，只测试空 URL、取消和本地不可连接端口的失败路径。
+- `NetworkingModuleTests` 不依赖外部网络服务；HTTP 覆盖空 URL、取消和本地不可连接端口的失败路径，Socket 覆盖本地 TCP/WebSocket echo。
 - `ScenesModuleTests` 使用 Build Settings 中已有的 `Assets/Scenes/SampleScene.unity`。
 - `AssetsModuleTests` 使用 `Assets/Tests/PlayMode/Resources/FrameTests/TextAsset.txt`。
 - `ConfigModuleTests` 使用 `Assets/Tests/EditMode/Resources/Configs/FrameTests/item.json`。

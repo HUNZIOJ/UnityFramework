@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
@@ -11,10 +10,7 @@ namespace Frame.Localization
         [Header("Spreadsheet Source")]
         [SerializeField] private TextAsset source;
         [SerializeField] private string delimiter = ",";
-
-        [Header("Manual Fallback")]
-        [SerializeField] private List<string> locales = new List<string> { "en" };
-        [SerializeField] private List<Entry> entries = new List<Entry>();
+        [SerializeField, HideInInspector] private string importedText = "";
 
         private readonly List<string> availableLocales = new List<string>();
         private Dictionary<string, Dictionary<string, string>> lookup;
@@ -66,39 +62,7 @@ namespace Frame.Localization
         public void Clear()
         {
             source = null;
-            locales.Clear();
-            entries.Clear();
-            MarkDirty();
-        }
-
-        public void SetLocales(params string[] localeCodes)
-        {
-            locales.Clear();
-            if (localeCodes != null)
-            {
-                for (int i = 0; i < localeCodes.Length; i++)
-                {
-                    AddLocaleIfMissing(CleanKey(localeCodes[i]));
-                }
-            }
-
-            NormalizeEntryValueCounts();
-            MarkDirty();
-        }
-
-        public void SetValue(string key, string locale, string value)
-        {
-            key = CleanKey(key);
-            locale = CleanKey(locale);
-            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(locale))
-            {
-                return;
-            }
-
-            int localeIndex = AddLocaleIfMissing(locale);
-            Entry entry = FindOrCreateEntry(key);
-            EnsureValueCount(entry.Values, locales.Count);
-            entry.Values[localeIndex] = value ?? string.Empty;
+            importedText = "";
             MarkDirty();
         }
 
@@ -116,17 +80,14 @@ namespace Frame.Localization
         {
             source = null;
             delimiter = textDelimiter == '\t' ? "\\t" : textDelimiter.ToString();
-            locales.Clear();
-            entries.Clear();
-
-            List<List<string>> rows = ParseDelimited(text, textDelimiter);
-            ApplyRows(rows);
+            importedText = text ?? string.Empty;
             MarkDirty();
         }
 
         public void SetSource(TextAsset textAsset, string textDelimiter = ",")
         {
             source = textAsset;
+            importedText = "";
             delimiter = string.IsNullOrEmpty(textDelimiter) ? "," : textDelimiter;
             MarkDirty();
         }
@@ -160,40 +121,13 @@ namespace Frame.Localization
             }
 
             availableLocales.Clear();
-            if (source != null && !string.IsNullOrEmpty(source.text))
+            string tableText = source != null && !string.IsNullOrEmpty(source.text) ? source.text : importedText;
+            if (!string.IsNullOrEmpty(tableText))
             {
-                BuildLookupFromRows(ParseDelimited(source.text, ResolveDelimiter()));
-            }
-            else
-            {
-                BuildLookupFromSerializedEntries();
+                BuildLookupFromRows(ParseDelimited(tableText, ResolveDelimiter()));
             }
 
             lookupDirty = false;
-        }
-
-        private void BuildLookupFromSerializedEntries()
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
-                Entry entry = entries[i];
-                if (entry == null || string.IsNullOrWhiteSpace(entry.Key))
-                {
-                    continue;
-                }
-
-                for (int j = 0; j < locales.Count; j++)
-                {
-                    string locale = CleanKey(locales[j]);
-                    if (string.IsNullOrWhiteSpace(locale))
-                    {
-                        continue;
-                    }
-
-                    string value = j < entry.Values.Count ? entry.Values[j] : string.Empty;
-                    AddLookupValue(locale, entry.Key, value);
-                }
-            }
         }
 
         private void BuildLookupFromRows(List<List<string>> rows)
@@ -243,42 +177,6 @@ namespace Frame.Localization
             }
         }
 
-        private void ApplyRows(List<List<string>> rows)
-        {
-            if (rows.Count == 0 || rows[0].Count < 2)
-            {
-                return;
-            }
-
-            List<string> header = rows[0];
-            for (int i = 1; i < header.Count; i++)
-            {
-                AddLocaleIfMissing(CleanKey(header[i]));
-            }
-
-            for (int rowIndex = 1; rowIndex < rows.Count; rowIndex++)
-            {
-                List<string> row = rows[rowIndex];
-                if (row.Count == 0)
-                {
-                    continue;
-                }
-
-                string key = CleanKey(row[0]);
-                if (string.IsNullOrWhiteSpace(key))
-                {
-                    continue;
-                }
-
-                Entry entry = FindOrCreateEntry(key);
-                EnsureValueCount(entry.Values, locales.Count);
-                for (int columnIndex = 1; columnIndex < row.Count && columnIndex <= locales.Count; columnIndex++)
-                {
-                    entry.Values[columnIndex - 1] = row[columnIndex];
-                }
-            }
-        }
-
         private void AddLookupValue(string locale, string key, string value)
         {
             locale = CleanKey(locale);
@@ -297,59 +195,6 @@ namespace Frame.Localization
             }
 
             localeLookup[key] = value ?? string.Empty;
-        }
-
-        private int AddLocaleIfMissing(string locale)
-        {
-            if (string.IsNullOrWhiteSpace(locale))
-            {
-                return -1;
-            }
-
-            for (int i = 0; i < locales.Count; i++)
-            {
-                if (locales[i] == locale)
-                {
-                    return i;
-                }
-            }
-
-            locales.Add(locale);
-            return locales.Count - 1;
-        }
-
-        private Entry FindOrCreateEntry(string key)
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
-                if (entries[i] != null && entries[i].Key == key)
-                {
-                    return entries[i];
-                }
-            }
-
-            Entry entry = new Entry { Key = key };
-            entries.Add(entry);
-            return entry;
-        }
-
-        private void NormalizeEntryValueCounts()
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
-                if (entries[i] != null)
-                {
-                    EnsureValueCount(entries[i].Values, locales.Count);
-                }
-            }
-        }
-
-        private static void EnsureValueCount(List<string> values, int count)
-        {
-            while (values.Count < count)
-            {
-                values.Add(string.Empty);
-            }
         }
 
         private char ResolveDelimiter()
@@ -446,13 +291,6 @@ namespace Frame.Localization
                     return;
                 }
             }
-        }
-
-        [Serializable]
-        private sealed class Entry
-        {
-            public string Key = "";
-            public List<string> Values = new List<string>();
         }
     }
 }

@@ -191,6 +191,12 @@ namespace Frame.Tests.PlayMode
                 return CreateHandle(path, prefab as T);
             }
 
+            public bool TryLoad<T>(string path, out AssetHandle<T> handle) where T : Object
+            {
+                handle = Load<T>(path);
+                return handle.IsValid;
+            }
+
             public AssetRequest<T> LoadAsync<T>(string path, System.Action<AssetHandle<T>> completed = null) where T : Object
             {
                 AssetRequest<T> request = new AssetRequest<T>();

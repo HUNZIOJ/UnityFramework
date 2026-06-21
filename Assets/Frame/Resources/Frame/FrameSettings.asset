@@ -39,11 +39,11 @@ MonoBehaviour:
   enableLocalizationService: 1
   assetServiceBackend: 0
   yooAssetPackageName: DefaultPackage
-  yooAssetPlayMode: 0
-  yooAssetEditorPackageRoot: ''
-  yooAssetBuiltinPackageRoot: ''
-  yooAssetDefaultHostServer: ''
-  yooAssetFallbackHostServer: ''
+  yooAssetPlayMode: 2
+  yooAssetEditorPackageRoot: 
+  yooAssetBuiltinPackageRoot: 
+  yooAssetDefaultHostServer: 
+  yooAssetFallbackHostServer: 
   yooAssetDownloadMaxConcurrency: 5
   yooAssetDownloadMaxRequestPerFrame: 1
   yooAssetDownloadWatchdogTimeout: 10
