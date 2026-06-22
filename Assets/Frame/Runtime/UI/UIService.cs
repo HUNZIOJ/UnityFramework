@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using Frame.Assets;
 using Frame.Core;
 using UnityEngine;
@@ -399,16 +400,16 @@ namespace Frame.UI
 
             if (!immediate && options != null && options.Transition != null && root != null && panel.gameObject.activeInHierarchy)
             {
-                root.StartCoroutine(CloseWithTransition(panel, destroy, options.Transition));
+                CloseWithTransition(panel, destroy, options.Transition).Forget();
                 return;
             }
 
             FinishClose(panel, destroy);
         }
 
-        private IEnumerator CloseWithTransition(UIPanelBase panel, bool destroy, IUITransition transition)
+        private async UniTaskVoid CloseWithTransition(UIPanelBase panel, bool destroy, IUITransition transition)
         {
-            yield return transition.PlayClose(panel);
+            await transition.PlayClose(panel);
             FinishClose(panel, destroy);
         }
 
@@ -515,7 +516,7 @@ namespace Frame.UI
                 return;
             }
 
-            root.StartCoroutine(options.Transition.PlayOpen(panel));
+            options.Transition.PlayOpen(panel).Forget();
         }
 
         private void RemoveCached(UIPanelBase panel)

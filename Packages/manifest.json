@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "com.code-philosophy.hybridclr": "https://gitee.com/focus-creative-games/hybridclr_unity.git",
+    "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm",
     "com.tuyoogame.yooasset": "file:com.tuyoogame.yooasset",
     "com.unity.addressables": "3.1.0",
     "com.unity.ai.navigation": "2.0.13",

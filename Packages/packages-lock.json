@@ -7,6 +7,13 @@
       "dependencies": {},
       "hash": "e4def761d69b27b7b51a5de0f6d272861416a2d6"
     },
+    "com.endel.nativewebsocket": {
+      "version": "https://github.com/endel/NativeWebSocket.git#upm",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "ea014c9ae534d56111962d96f89f8a046e302dc9"
+    },
     "com.cysharp.unitask": {
       "version": "file:com.cysharp.unitask",
       "depth": 0,

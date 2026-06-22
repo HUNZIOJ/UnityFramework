@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
-using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
@@ -26,7 +25,7 @@ namespace Frame.Networking
         private CancellationTokenSource reconnectCancellation;
         private TcpClient tcpClient;
         private Stream tcpStream;
-        private ClientWebSocket webSocket;
+        private IWebSocketConnection webSocket;
         private SocketReceiveBuffer receiveBuffer;
         private SocketClientState state = SocketClientState.Disconnected;
         private bool disposed;
@@ -88,7 +87,7 @@ namespace Frame.Networking
             get { return metrics; }
         }
 
-        public async UniTask<bool> ConnectAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public async UniTask<bool> ConnectAsync(CancellationToken cancellationToken = default)
         {
             await connectGate.WaitAsync(cancellationToken);
             try
@@ -241,8 +240,10 @@ namespace Frame.Networking
 
         private async UniTask ConnectTcpAsync(CancellationToken cancellationToken)
         {
-            TcpClient client = new TcpClient();
-            client.NoDelay = options.NoDelay;
+            TcpClient client = new TcpClient
+            {
+                NoDelay = options.NoDelay
+            };
             try
             {
                 Task connectTask = client.ConnectAsync(options.Host, options.Port);
@@ -297,41 +298,10 @@ namespace Frame.Networking
 
         private async UniTask ConnectWebSocketAsync(CancellationToken cancellationToken)
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
-            throw new PlatformNotSupportedException("ClientWebSocket is not available on WebGL builds. Use a WebGL-specific WebSocket transport.");
-#else
-            ClientWebSocket socket = new ClientWebSocket();
+            IWebSocketConnection socket = WebSocketConnectionFactory.Create(options);
             try
             {
-                if (options.WebSocketHeaders != null)
-                {
-                    foreach (var header in options.WebSocketHeaders)
-                    {
-                        if (!string.IsNullOrWhiteSpace(header.Key))
-                        {
-                            socket.Options.SetRequestHeader(header.Key, header.Value);
-                        }
-                    }
-                }
-
-                if (options.WebSocketSubProtocols != null)
-                {
-                    for (int i = 0; i < options.WebSocketSubProtocols.Count; i++)
-                    {
-                        string protocol = options.WebSocketSubProtocols[i];
-                        if (!string.IsNullOrWhiteSpace(protocol))
-                        {
-                            socket.Options.AddSubProtocol(protocol);
-                        }
-                    }
-                }
-
-                socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
-                using (CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-                {
-                    timeout.CancelAfter(options.ConnectTimeoutMilliseconds);
-                    await socket.ConnectAsync(new Uri(options.Url), timeout.Token);
-                }
+                await socket.ConnectAsync(cancellationToken);
 
                 lock (transportLock)
                 {
@@ -346,7 +316,6 @@ namespace Frame.Networking
                 socket.Dispose();
                 throw;
             }
-#endif
         }
 
         private void StartBackgroundLoops(CancellationToken cancellationToken)
@@ -462,51 +431,28 @@ namespace Frame.Networking
 
         private async UniTask ReceiveWebSocketLoopAsync(CancellationToken cancellationToken)
         {
-            byte[] readBuffer = new byte[options.ReceiveBufferSize];
-            using (MemoryStream messageStream = new MemoryStream())
+            while (!cancellationToken.IsCancellationRequested)
             {
-                while (!cancellationToken.IsCancellationRequested)
+                IWebSocketConnection socket;
+                lock (transportLock)
                 {
-                    ClientWebSocket socket;
-                    lock (transportLock)
-                    {
-                        socket = webSocket;
-                    }
-
-                    if (socket == null)
-                    {
-                        throw new IOException("WebSocket is not available.");
-                    }
-
-                    WebSocketReceiveResult result = await socket.ReceiveAsync(new ArraySegment<byte>(readBuffer), cancellationToken);
-                    if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        return;
-                    }
-
-                    if (result.Count > 0)
-                    {
-                        messageStream.Write(readBuffer, 0, result.Count);
-                    }
-
-                    if (messageStream.Length > options.MaxMessageSizeBytes)
-                    {
-                        throw new InvalidOperationException("WebSocket message exceeds max size: " + messageStream.Length);
-                    }
-
-                    if (!result.EndOfMessage)
-                    {
-                        continue;
-                    }
-
-                    byte[] payload = messageStream.ToArray();
-                    messageStream.SetLength(0);
-                    SocketMessageKind kind = result.MessageType == WebSocketMessageType.Text ? SocketMessageKind.Text : SocketMessageKind.Binary;
-                    SocketMessage message = SocketMessage.WrapUnsafe(payload, kind);
-                    MarkReceivedActivity();
-                    MarkReceivedMessage(message);
-                    RaiseMessage(message);
+                    socket = webSocket;
                 }
+
+                if (socket == null)
+                {
+                    throw new IOException("WebSocket is not available.");
+                }
+
+                SocketMessage message = await socket.ReceiveAsync(cancellationToken);
+                if (message == null)
+                {
+                    return;
+                }
+
+                MarkReceivedActivity();
+                MarkReceivedMessage(message);
+                RaiseMessage(message);
             }
         }
 
@@ -514,19 +460,18 @@ namespace Frame.Networking
         {
             if (options.Transport == SocketTransportType.WebSocket)
             {
-                ClientWebSocket socket;
+                IWebSocketConnection socket;
                 lock (transportLock)
                 {
                     socket = webSocket;
                 }
 
-                if (socket == null || socket.State != WebSocketState.Open)
+                if (socket == null || !socket.IsOpen)
                 {
                     throw new IOException("WebSocket is not open.");
                 }
 
-                WebSocketMessageType type = message.Kind == SocketMessageKind.Text ? WebSocketMessageType.Text : WebSocketMessageType.Binary;
-                await socket.SendAsync(new ArraySegment<byte>(message.Data), type, true, cancellationToken);
+                await socket.SendAsync(message, cancellationToken);
                 MarkSentActivity();
                 return;
             }
@@ -694,7 +639,7 @@ namespace Frame.Networking
         {
             TcpClient client;
             Stream stream;
-            ClientWebSocket socket;
+            IWebSocketConnection socket;
             lock (transportLock)
             {
                 client = tcpClient;
@@ -710,13 +655,7 @@ namespace Frame.Networking
             {
                 try
                 {
-                    if (socket.State == WebSocketState.Open || socket.State == WebSocketState.CloseReceived)
-                    {
-                        using (CancellationTokenSource closeTimeout = new CancellationTokenSource(1000))
-                        {
-                            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, reason.ToString(), closeTimeout.Token);
-                        }
-                    }
+                    await socket.CloseAsync(reason);
                 }
                 catch
                 {
@@ -754,7 +693,7 @@ namespace Frame.Networking
         {
             TcpClient client;
             Stream stream;
-            ClientWebSocket socket;
+            IWebSocketConnection socket;
             lock (transportLock)
             {
                 client = tcpClient;

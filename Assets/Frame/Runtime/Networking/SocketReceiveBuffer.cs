@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 
 namespace Frame.Networking
 {
@@ -38,11 +39,7 @@ namespace Frame.Networking
                 return false;
             }
 
-            int index = offset;
-            value = (buffer[index] << 24)
-                | (buffer[index + 1] << 16)
-                | (buffer[index + 2] << 8)
-                | buffer[index + 3];
+            value = BinaryPrimitives.ReadInt32BigEndian(new ReadOnlySpan<byte>(buffer, offset, 4));
             return true;
         }
 

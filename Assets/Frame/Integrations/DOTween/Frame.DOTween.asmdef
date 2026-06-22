@@ -2,7 +2,8 @@
   "name": "Frame.DOTween",
   "rootNamespace": "Frame.DOTween",
   "references": [
-    "Frame.Runtime"
+    "Frame.Runtime",
+    "DG.Tweening.Modules"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

@@ -85,7 +85,7 @@ namespace Frame.DOTween
                 return new DOTweenTweenHandle(null);
             }
 
-            Tween tween = DG.Tweening.DOTween.To(() => target.alpha, value => target.alpha = value, Mathf.Clamp01(endValue), Mathf.Max(0f, duration));
+            Tween tween = target.DOFade(Mathf.Clamp01(endValue), Mathf.Max(0f, duration));
             tween.SetTarget(target);
             ApplyOptions(tween, options);
             return new DOTweenTweenHandle(tween);
@@ -114,7 +114,15 @@ namespace Frame.DOTween
             }
 
             TweenOptions resolved = options ?? new TweenOptions();
-            tween.SetEase(MapEase(resolved.Ease));
+            if (resolved.EaseCurve != null)
+            {
+                tween.SetEase(resolved.EaseCurve);
+            }
+            else
+            {
+                tween.SetEase(MapEase(resolved.Ease));
+            }
+
             tween.SetUpdate(resolved.IgnoreTimeScale);
 
             if (resolved.Target != null)

@@ -31,6 +31,7 @@ namespace Frame.Networking
         public ISocketMessageCodec Codec;
         public Dictionary<string, string> WebSocketHeaders;
         public List<string> WebSocketSubProtocols;
+        public SocketMessageKind WebGlWebSocketReceiveKind = SocketMessageKind.Binary;
 
         public static SocketClientOptions Tcp(string host, int port)
         {

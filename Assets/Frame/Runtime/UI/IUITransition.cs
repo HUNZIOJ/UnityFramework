@@ -1,11 +1,11 @@
-using System.Collections;
+using Cysharp.Threading.Tasks;
 
 namespace Frame.UI
 {
     public interface IUITransition
     {
-        IEnumerator PlayOpen(UIPanelBase panel);
+        UniTask PlayOpen(UIPanelBase panel);
 
-        IEnumerator PlayClose(UIPanelBase panel);
+        UniTask PlayClose(UIPanelBase panel);
     }
 }

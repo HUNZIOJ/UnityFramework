@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 
 namespace Frame.Networking
 {
@@ -20,7 +21,7 @@ namespace Frame.Networking
             }
 
             byte[] frame = new byte[payload.Length + 4];
-            WriteInt32BigEndian(frame, 0, payload.Length);
+            BinaryPrimitives.WriteInt32BigEndian(frame, payload.Length);
             if (payload.Length > 0)
             {
                 Buffer.BlockCopy(payload, 0, frame, 4, payload.Length);
@@ -56,14 +57,6 @@ namespace Frame.Networking
 
             message = SocketMessage.WrapUnsafe(payload, SocketMessageKind.Binary);
             return true;
-        }
-
-        private static void WriteInt32BigEndian(byte[] buffer, int offset, int value)
-        {
-            buffer[offset] = (byte)((value >> 24) & 0xff);
-            buffer[offset + 1] = (byte)((value >> 16) & 0xff);
-            buffer[offset + 2] = (byte)((value >> 8) & 0xff);
-            buffer[offset + 3] = (byte)(value & 0xff);
         }
     }
 }

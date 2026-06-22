@@ -4,7 +4,6 @@
 
 完整说明、模块实现细节、生产可用性评估和使用示例见：
 
-- [FRAMEWORK_GUIDE.md](FRAMEWORK_GUIDE.md)
 - [FRAMEWORK_DEEP_DIVE.md](FRAMEWORK_DEEP_DIVE.md)
 
 ## 当前结论

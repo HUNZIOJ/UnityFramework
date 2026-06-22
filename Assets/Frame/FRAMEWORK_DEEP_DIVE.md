@@ -1,6 +1,6 @@
 # Frame Framework Deep Dive
 
-本文档用于解释 `Assets/Frame` 框架的整体设计、每个模块的使用方式、每个公开类型的职责，以及关键实现方式。它比 `README.md` 和 `FRAMEWORK_GUIDE.md` 更偏向源码阅读和二次开发参考。
+本文档用于解释 `Assets/Frame` 框架的整体设计、每个模块的使用方式、每个公开类型的职责，以及关键实现方式。它比 `README.md` 更偏向源码阅读和二次开发参考。
 
 ## 阅读方式
 
@@ -1189,24 +1189,6 @@ Scenes 模块封装 Unity `SceneManager`，提供同步加载、异步加载、B
 
 同步加载：
 
-```csharp
-using Frame.Core;
-using Frame.Scenes;
-using UnityEngine.SceneManagement;
-
-ISceneService scenes = Framework.Resolve<ISceneService>();
-scenes.Load("Battle", LoadSceneMode.Single);
-```
-
-异步加载并手动激活：
-
-```csharp
-SceneLoadOperation op = scenes.LoadAsync(new SceneLoadArgs
-{
-    SceneName = "Battle",
-    Mode = LoadSceneMode.Single,
-    ActivateOnLoad = false,
-    SetActiveOnComplete = true,
     Progress = p => FrameLog.Info("Loading: " + p)
 });
 
@@ -1450,7 +1432,7 @@ if (request.Success)
 | `UIRoute` | 路由定义 | route 名、Resources 路径、panel 类型、默认打开配置 |
 | `UIPanelRequest<TPanel>` | 异步打开请求 | 可 `yield return`，有 Success、Panel、Error |
 | `IUITransition` | UI 动画接口 | `PlayOpen` 和 `PlayClose` 返回 IEnumerator |
-| `UIFadeTransition` | 默认淡入淡出动画 | 自动确保 CanvasGroup，支持 unscaled time |
+| `UIFadeTransition` | 默认淡入淡出动画 | 自动确保 CanvasGroup，支持 unscaled time，内部通过 `ITweenService` 桥接调用 DOTween 的 DOFade |
 | `SafeAreaFitter` | 安全区适配组件 | 根据 `Screen.safeArea` 调整 RectTransform 锚点 |
 | `QueuedPanelOpen` | `UIService` 私有队列项 | 保存 route、panel 类型、参数和请求句柄，队列弹窗关闭后继续打开下一个 |
 
@@ -1562,11 +1544,13 @@ if (request.Success)
 
 | 成员 | 作用 | 实现方式 | 使用方式和注意点 |
 | --- | --- | --- | --- |
-| `UIFadeTransition(float duration = 0.18f, bool unscaledTime = true)` | 创建淡入淡出动画 | OpenDuration/CloseDuration 都设为 duration，保存 UseUnscaledTime | 适合 UI，不受 timeScale 影响 |
+| `UIFadeTransition(float duration = 0.18f, bool unscaledTime = true, Ease ease = Ease.OutQuad)` | 创建淡入淡出动画 | OpenDuration/CloseDuration 都设为 duration，保存 UseUnscaledTime，open/close ease 同步设置 | 适合多数 UI，不受 timeScale 影响 |
 | `OpenDuration/CloseDuration/UseUnscaledTime` | 动画参数 | 自动属性 | 可运行时调整 |
-| `PlayOpen(UIPanelBase panel)` | 淡入 | `Fade(panel, 0, 1, OpenDuration)` | 打开时调用 |
-| `PlayClose(UIPanelBase panel)` | 淡出 | `Fade(panel, 1, 0, CloseDuration)` | 关闭时调用 |
-| `Fade(...)` | 淡入淡出实现 | panel 空 yield break；确保 CanvasGroup；duration <= 0 直接设 alpha；循环按 scaled/unscaled delta Lerp；结束设目标 alpha | 自动添加 CanvasGroup |
+| `OpenEase/CloseEase` | 打开/关闭缓动 | 默认构造参数 ease | 用 DOTween 的 Ease |
+| `OpenCurve/CloseCurve` | 打开/关闭自定义曲线 | AnimationCurve | 非空时优先于 TweenEase |
+| `PlayOpen(UIPanelBase panel)` | 淡入 | `Fade(panel, 0, 1, OpenDuration, OpenEase, OpenCurve)` | 打开时调用 |
+| `PlayClose(UIPanelBase panel)` | 淡出 | `Fade(panel, 1, 0, CloseDuration, CloseEase, CloseCurve)` | 关闭时调用 |
+| `Fade(...)` | 淡入淡出实现 | panel 空 yield break；确保 CanvasGroup；duration <= 0 直接设 alpha；优先解析 ITweenService.Fade；无补间服务时线性协程插值；结束设目标 alpha | 自动添加 CanvasGroup |
 
 #### `SafeAreaFitter.cs`
 
@@ -1776,11 +1760,12 @@ tweens.Move(transform, new Vector3(0, 2, 0), 0.3f, local: true, new TweenOptions
 | --- | --- | --- |
 | `ITweenService` | 补间服务接口 | To、Move、Scale、Fade、Kill、KillAll |
 | `ITweenHandle` | 补间句柄接口 | IsActive、IsPlaying、Play、Pause、Kill、OnComplete |
-| `TweenOptions` | 补间配置 | Ease、IgnoreTimeScale、Target、Completed |
+| `TweenOptions` | 补间配置 | Ease、EaseCurve、IgnoreTimeScale、Target、Completed |
 | `TweenEase` | 缓动枚举 | Linear、Quad、Cubic、Back 系列 |
 | `DOTweenModuleInstaller` | DOTween 模块安装器 | 根据设置把 DOTween 服务加入模块列表 |
 | `DOTweenTweenService` | DOTween 实现 | 把接口调用映射到 DOTween API，负责 Ease 映射 |
 | `DOTweenTweenHandle` | DOTween 句柄包装 | 包装 `Tween`，提供统一句柄操作 |
+| `DOTweenUIFadeTransition` | DOTween UI 过渡 | 直接使用 `CanvasGroup.DOFade` 实现打开/关闭淡入淡出 |
 
 ### 源码级文件和方法详解
 
@@ -1823,6 +1808,7 @@ tweens.Move(transform, new Vector3(0, 2, 0), 0.3f, local: true, new TweenOptions
 | 字段 | 作用 | 默认和注意点 |
 | --- | --- | --- |
 | `Ease` | 缓动类型 | 默认 `TweenEase.OutQuad` |
+| `EaseCurve` | 自定义缓动曲线 | 非空时 DOTween SetEase(AnimationCurve) 优先于 Ease |
 | `IgnoreTimeScale` | 是否忽略 Time.timeScale | DOTween `SetUpdate(bool)` |
 | `Target` | 业务目标对象 | 用于 DOTween target 和 Kill |
 | `Completed` | 完成回调 | ApplyOptions 绑定 OnComplete |
@@ -1855,7 +1841,7 @@ tweens.Move(transform, new Vector3(0, 2, 0), 0.3f, local: true, new TweenOptions
 | `To(...)` | float 补间 | getter 或 setter 空返回无效 handle；否则 `DOTween.To(getter.Invoke, setter.Invoke, endValue, max(0,duration))`，ApplyOptions | duration 小于 0 会按 0 处理 |
 | `Move(...)` | 位置补间 | target 空无效；用 DOTween.To 读写 local/world position；先 `tween.SetTarget(target)`，再 ApplyOptions | options.Target 可覆盖 target |
 | `Scale(...)` | 缩放补间 | target 空无效；读写 `target.localScale` | 常用于 UI 或 Transform 动画 |
-| `Fade(...)` | CanvasGroup alpha 补间 | target 空无效；endValue clamp；读写 `target.alpha` | UI 淡入淡出 |
+| `Fade(...)` | CanvasGroup alpha 补间 | target 空无效；使用 DOTween `CanvasGroup.DOFade`；endValue clamp | UI 淡入淡出 |
 | `Kill(object target, bool complete = false)` | 按 target 杀 tween | 返回 `DOTween.Kill(target, complete)` 数量 | 依赖 tween target |
 | `KillAll(bool complete = false)` | 杀全部 tween | 调 `DOTween.KillAll(complete)` | 框架关闭时调用 |
 | `OnShutdown()` | 关闭服务 | `KillAll(false)` | 防止 tween 继续运行 |
