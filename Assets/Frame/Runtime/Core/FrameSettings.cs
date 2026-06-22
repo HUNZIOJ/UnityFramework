@@ -35,6 +35,7 @@ namespace Frame.Core
         [SerializeField] private bool enableAssetService = true;
         [SerializeField] private bool enableSceneService = true;
         [SerializeField] private bool enableUIService = true;
+        [SerializeField] private bool enableGuideService = true;
         [SerializeField] private bool enableAudioService = true;
         [SerializeField] private bool enableTweenService = true;
         [SerializeField] private bool enableSaveService = true;
@@ -169,6 +170,11 @@ namespace Frame.Core
         public bool EnableUIService
         {
             get { return enableUIService; }
+        }
+
+        public bool EnableGuideService
+        {
+            get { return enableGuideService; }
         }
 
         public bool EnableAudioService

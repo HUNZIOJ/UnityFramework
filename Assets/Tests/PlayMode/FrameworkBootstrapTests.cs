@@ -10,6 +10,7 @@ using Frame.Localization;
 using Frame.Networking;
 using Frame.Pooling;
 using Frame.Preferences;
+using Frame.Runtime.Guide;
 using Frame.Save;
 using Frame.Scenes;
 using Frame.Timing;
@@ -53,6 +54,7 @@ namespace Frame.Tests.PlayMode
             Assert.IsTrue(Framework.TryResolve(out IAssetService _));
             Assert.IsTrue(Framework.TryResolve(out ISceneService _));
             Assert.IsTrue(Framework.TryResolve(out IUIService _));
+            Assert.IsTrue(Framework.TryResolve(out IGuideService _));
             Assert.IsTrue(Framework.TryResolve(out IAudioService _));
             Assert.IsTrue(Framework.TryResolve(out ISaveService _));
             Assert.IsTrue(Framework.TryResolve(out IConfigService _));

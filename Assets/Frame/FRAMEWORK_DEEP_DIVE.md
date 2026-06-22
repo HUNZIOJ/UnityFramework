@@ -7,7 +7,7 @@
 建议按下面顺序理解：
 
 1. 先看 Core 模块，理解启动、模块生命周期和服务注册。
-2. 再看业务常用模块：Assets、UI、Scenes、Audio、Save、Config、Networking、Input。
+2. 再看业务常用模块：Assets、UI、Guide、Scenes、Audio、Save、Config、Networking、Input。
 3. 最后看辅助模块：Diagnostics、Lifecycle、Events、Time、Preferences、Pooling、Localization、StateMachine、Tweening、Utilities、Editor。
 
 业务代码建议放在 `Assets/Game` 或 `Assets/Scripts/Game`，通过 `Framework.Resolve<TService>()` 获取框架服务，不建议把业务逻辑写进 `Assets/Frame`。
@@ -35,6 +35,7 @@
 | Assets | `ResourcesAssetService` / `AddressablesAssetService` / `YooAssetAssetService` | -600 | 资源加载和引用计数，后端由 `FrameSettings.AssetServiceBackend` 决定 |
 | Scenes | `SceneService` | -500 | SceneManager 封装 |
 | UI | `UIService` | -400 | UGUI root、路由、栈、弹窗 |
+| Guide | `GuideService` | -350 | 新手引导、目标寻址和镂空遮罩 |
 | Audio | `AudioService` | -300 | 音源池、BGM、音效 |
 | DOTween | `DOTweenTweenService` | -250 | DOTween 适配 |
 | Config | `ConfigService` | -200 | 配置 Provider 链 |
@@ -47,10 +48,12 @@
 
 ```csharp
 using Frame.Core;
+using Frame.Runtime.Guide;
 using Frame.UI;
 using Frame.Save;
 
 IUIService ui = Framework.Resolve<IUIService>();
+IGuideService guide = Framework.Resolve<IGuideService>();
 ISaveService save = Framework.Resolve<ISaveService>();
 
 if (Framework.TryResolve(out IUIService optionalUi))
@@ -1606,6 +1609,76 @@ if (request.Success)
 | `OpenNextQueuedPanel()` | 推进队列 | 当前 queuedActivePanel 仍打开则返回；循环取队列项，查 route、校验类型、OpenInternal；失败则完成失败并继续下一个；成功设 queuedActivePanel 并完成请求 | 确保队列一次只有一个 active 面板 |
 | `QueuedPanelOpen` | 队列项基类 | 保存 PanelType/Route/Args/request；Complete 转发到 `UIPanelRequest<UIPanelBase>` | 非泛型队列使用 |
 | `QueuedPanelOpen<TPanel>` | 泛型队列项 | 保存泛型 request；Complete 时 `panel as TPanel` | 泛型队列请求使用 |
+
+## Guide 模块
+
+Guide 模块提供新手引导流程的基础能力：用 `GuideConfig` 配置步骤，用 `GuideTarget` 在运行时定位 UI 目标，用 `UIGuideMask` 绘制镂空遮罩，并由 `IGuideService` 推进整组步骤。
+
+### 使用方式
+
+1. 在需要高亮的 UI 节点上挂 `GuideTarget`，填写唯一 `TargetId`。
+2. 创建 `GuideConfig` 资产：`Create > Framework > Guide > Guide Config`。
+3. 填写正数 `GuideGroupId` 后，默认会持久化当前步骤和完成状态；`PersistProgress` 可关闭持久化。
+4. 可选配置 `DialoguePrefab`，用于统一这一组引导的提示框外观。Prefab 内可放 `UnityEngine.UI.Text` 组件，框架会把 `DialogueText` 写进去；未配置 prefab 时使用默认提示框。
+5. 在每个 `GuideStep` 中填写 `TargetId`、`MaskShape`、`Padding`、触发方式和可选提示文本。
+6. 业务流程中启动引导：
+
+```csharp
+using Frame.Core;
+using Frame.Runtime.Guide;
+
+IGuideService guide = Framework.Resolve<IGuideService>();
+guide.StartGuide(config, () => Debug.Log("Guide completed."));
+```
+
+自定义事件步骤：
+
+```csharp
+// GuideStep.TriggerType = CustomEvent，CustomEventName = "equip_item"
+Framework.Resolve<IGuideService>().NotifyCustomEvent("equip_item");
+```
+
+### 设计和实现
+
+`GuideService` 是默认框架模块，优先级为 `-350`，晚于 `UIService` 初始化。初始化时注册 `IGuideService` 和自身实现；关闭时会中断当前引导并销毁遮罩层。`FrameSettings.EnableGuideService` 可关闭该模块。
+
+引导运行时会动态创建一个 `GuideMaskLayer` Canvas，`sortingOrder = 30000`，确保覆盖普通 UI。`GuideTarget` 用静态字典登记当前存活目标，步骤开始时 `GuideService` 会等待目标出现，再把目标中心和尺寸转换到遮罩本地坐标，调用 `UIGuideMask.SetTarget()` 绘制孔洞。`DialogueText` 非空时会显示 `GuideDialogue` 文本提示块：优先实例化 `GuideConfig.DialoguePrefab`，未配置时使用框架默认提示框，并按 `DialogueOffset` 放在目标中心附近。如果自定义 prefab 里没有 `Text` 组件，框架会自动补一个默认文本子节点。
+
+进度持久化使用 `GuideGroupId` 生成 PlayerPrefs key，并优先通过 `IPreferencesService` 写入。每步开始前记录当前步骤索引，每步完成后记录下一步索引；如果玩家在第三步中途退出，下次 `StartGuide(config)` 会从第三步继续。整组完成后会标记 completed，再次启动同一组引导会直接触发完成回调并跳过播放。业务可以通过 `GetGuideProgress()`、`IsGuideCompleted()` 和 `ResetGuideProgress()` 查询或重置状态。
+
+遮罩形状：
+
+| 形状 | 说明 |
+| --- | --- |
+| `Rectangle` | 矩形孔洞，适合按钮、面板块 |
+| `RoundedRectangle` | 圆角矩形孔洞，使用 `GuideStep.CornerRadius` |
+| `Circle` | 以目标最大边为直径的圆形孔洞 |
+| `Ellipse` | 使用目标宽高的椭圆孔洞 |
+
+触发方式：
+
+| 类型 | 行为 |
+| --- | --- |
+| `ClickTarget` | 等待目标上的 `Button.onClick` 触发，遮罩孔洞区域允许点击穿透 |
+| `AutoNext` | 临时创建全屏透明点击层，点击屏幕任意位置继续 |
+| `CustomEvent` | 等待业务调用 `NotifyCustomEvent(eventName)`，并按 `CustomEventName` 校验 |
+
+### 类型职责
+
+| 类型 | 作用 | 关键点 |
+| --- | --- | --- |
+| `IGuideService` | 引导服务接口 | 查询是否引导中、启动、停止、通知自定义事件、查询/重置进度 |
+| `GuideService` | 引导流程实现 | 创建遮罩 Canvas、等待目标、推进步骤、进度持久化、处理取消和完成回调 |
+| `GuideConfig` | 一组引导配置 | ScriptableObject，包含 `GuideGroupId`、`PersistProgress`、可选 `DialoguePrefab` 和步骤列表 |
+| `GuideStep` | 单步配置 | 目标 ID、遮罩形状、padding、圆角半径、触发方式、提示文本 |
+| `GuideTarget` | UI 目标注册组件 | 按字符串 ID 注册当前激活目标，UI 与引导配置解耦 |
+| `UIGuideMask` | 镂空遮罩 Graphic | 纯 C# 顶点绘制，不依赖 shader；同时负责射线穿透判定 |
+| `GuideMaskShape` | 遮罩形状枚举 | Rectangle、RoundedRectangle、Circle、Ellipse |
+| `GuideTriggerType` | 步骤完成条件 | ClickTarget、AutoNext、CustomEvent |
+
+### 当前边界
+
+当前内置的 `GuideDialogue` 是最低限度的 UGUI 文本提示，适合原型和默认兜底。生产项目通常应通过 `GuideConfig.DialoguePrefab` 替换提示气泡外观，并按自己的 UI 规范扩展箭头、角色立绘、语音或埋点。进度持久化只处理本地步骤恢复；如果账号支持云端同步，需要业务层把对应 key 或状态同步到账号存档。
 
 ## Audio 模块
 

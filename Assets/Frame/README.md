@@ -38,6 +38,7 @@ Assets/Frame
   Runtime/Assets                资源服务接口、Resources 实现、异步请求、资源句柄
   Runtime/Scenes                SceneManager 封装
   Runtime/UI                    UGUI 根节点、分层、路由、返回栈、模态、动画、安全区
+  Runtime/Guide                 新手引导配置、目标寻址、镂空遮罩和触发推进
   Runtime/Audio                 BGM/SFX/UI 音频播放与分组音量
   Runtime/Tweening              补间动画抽象接口
   Runtime/Config                基于 IAssetService 的 JSON/ScriptableObject 配置入口
@@ -76,7 +77,7 @@ IEventBus events = Framework.Resolve<IEventBus>();
 ITimerService timers = Framework.Resolve<ITimerService>();
 ```
 
-业务代码建议优先依赖接口，例如 `IEventBus`、`ITimerService`、`IAssetService`、`IUIService`、`ISaveService`、`IHttpService`、`ISocketService`。
+业务代码建议优先依赖接口，例如 `IEventBus`、`ITimerService`、`IAssetService`、`IUIService`、`IGuideService`、`ISaveService`、`IHttpService`、`ISocketService`。
 
 ## 模块概览
 
@@ -89,6 +90,7 @@ ITimerService timers = Framework.Resolve<ITimerService>();
 - `Assets`：默认使用 `Resources`，也提供 Addressables 和 YooAsset 集成；通过 `FrameSettings.AssetServiceBackend` 切换，统一暴露 `IAssetService`、引用计数、异步请求状态/取消和资源诊断。
 - `Scenes`：封装同步加载、异步加载、卸载、Build Settings 校验、加载状态/事件、手动激活和进度回调。
 - `UI`：自动创建 UGUI root，内置分层、`UIPanelBase` 生命周期、路由、返回栈、模态遮罩、弹窗队列、异步打开、强类型参数和淡入淡出动画扩展点。
+- `Guide`：基于 `GuideConfig` 和 `GuideTarget` 的新手引导服务，支持矩形、圆角矩形、圆形、椭圆镂空遮罩，支持点击目标、点击任意处、自定义事件三类推进方式，可配置自定义提示框 prefab，并按 `GuideGroupId` 持久化步骤进度。
 - `Audio`：BGM 淡入淡出、SFX source 池、Master/Music/Sfx/UI/Ambient 分组音量。
 - `Tweening`：业务依赖 `ITweenService`，当前通过 DOTween 适配层实现。
 - `Config`：默认通过 `IAssetService` 读取 `Configs` 下的 JSON 和 ScriptableObject 配置，支持运行时 JSON 覆盖、读取缓存、provider 优先级和 `IConfigValidator` 校验。
@@ -123,6 +125,14 @@ UI：
 ```csharp
 Framework.Resolve<IUIService>()
     .Open<MainMenuPanel>("UI/MainMenu", UILayer.Normal);
+```
+
+新手引导：
+
+```csharp
+using Frame.Runtime.Guide;
+
+Framework.Resolve<IGuideService>().StartGuide(tutorialGuideConfig);
 ```
 
 输入上下文：

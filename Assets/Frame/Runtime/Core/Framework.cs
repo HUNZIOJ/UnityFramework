@@ -9,6 +9,7 @@ using Frame.Localization;
 using Frame.Networking;
 using Frame.Pooling;
 using Frame.Preferences;
+using Frame.Runtime.Guide;
 using Frame.Save;
 using Frame.Scenes;
 using Frame.Timing;
@@ -263,6 +264,11 @@ namespace Frame.Core
             if (settings.EnableUIService)
             {
                 modules.Add(new UIService());
+            }
+
+            if (settings.EnableGuideService)
+            {
+                modules.Add(new GuideService());
             }
 
             if (settings.EnableAudioService)
