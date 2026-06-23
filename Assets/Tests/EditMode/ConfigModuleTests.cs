@@ -1,8 +1,11 @@
+using System;
+using System.Collections.Generic;
 using Frame.Assets;
 using Frame.Config;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using Object = UnityEngine.Object;
 
 namespace Frame.Tests.EditMode
 {
@@ -11,7 +14,9 @@ namespace Frame.Tests.EditMode
         [Test]
         public void AssetJsonConfigProvider_LoadsJsonThroughAssetService()
         {
-            AssetJsonConfigProvider provider = new AssetJsonConfigProvider(new ResourcesAssetService(), "Configs");
+            MemoryAssetService assets = new MemoryAssetService();
+            assets.Register("Configs/FrameTests/item", new TextAsset("{\"Id\":\"item_001\",\"Name\":\"Iron Sword\",\"Power\":12}"));
+            AssetJsonConfigProvider provider = new AssetJsonConfigProvider(assets, "Configs");
 
             Assert.IsTrue(provider.TryLoad("FrameTests/item", out ItemConfig config));
             Assert.AreEqual("item_001", config.Id);
@@ -92,7 +97,9 @@ namespace Frame.Tests.EditMode
         {
             using (FrameTestFixture fixture = new FrameTestFixture())
             {
-                fixture.Initialize(new ResourcesAssetService());
+                MemoryAssetService assets = new MemoryAssetService();
+                assets.Register("Configs/FrameTests/item", new TextAsset("{\"Id\":\"item_001\",\"Name\":\"Iron Sword\",\"Power\":12}"));
+                fixture.Services.Register<IAssetService>(assets);
                 ConfigService service = fixture.Initialize(new ConfigService());
                 RuntimeJsonConfigProvider provider = new RuntimeJsonConfigProvider();
                 provider.SetJson("FrameTests/item.json", "{\"Id\":\"remote_001\",\"Name\":\"Remote Sword\",\"Power\":20}");
@@ -147,10 +154,21 @@ namespace Frame.Tests.EditMode
         [Test]
         public void AssetScriptableConfigProvider_LoadsScriptableConfigsThroughAssetService()
         {
-            AssetScriptableConfigProvider provider = new AssetScriptableConfigProvider(new ResourcesAssetService(), "Configs");
+            TestScriptableConfig config = ScriptableObject.CreateInstance<TestScriptableConfig>();
+            config.name = "resource_scriptable";
+            try
+            {
+                MemoryAssetService assets = new MemoryAssetService();
+                assets.Register("Configs/FrameTests/resource_scriptable", config);
+                AssetScriptableConfigProvider provider = new AssetScriptableConfigProvider(assets, "Configs");
 
-            Assert.IsTrue(provider.TryLoad("FrameTests/resource_scriptable", out TestScriptableConfig loaded));
-            Assert.AreEqual("resource_scriptable", loaded.Id);
+                Assert.IsTrue(provider.TryLoad("FrameTests/resource_scriptable", out TestScriptableConfig loaded));
+                Assert.AreEqual("resource_scriptable", loaded.Id);
+            }
+            finally
+            {
+                Object.DestroyImmediate(config);
+            }
         }
 
         [Test]
@@ -210,5 +228,72 @@ namespace Frame.Tests.EditMode
             }
         }
 
+        private sealed class MemoryAssetService : IAssetService
+        {
+            private readonly Dictionary<string, Object> assets = new Dictionary<string, Object>(StringComparer.Ordinal);
+
+            public void Register(string path, Object asset)
+            {
+                assets[path] = asset;
+            }
+
+            public AssetHandle<T> Load<T>(string path) where T : Object
+            {
+                AssetHandle<T> handle;
+                TryLoad(path, out handle);
+                return handle;
+            }
+
+            public bool TryLoad<T>(string path, out AssetHandle<T> handle) where T : Object
+            {
+                Object asset;
+                if (assets.TryGetValue(path, out asset) && asset is T typed)
+                {
+                    handle = new AssetHandle<T>(this, path, typed);
+                    return true;
+                }
+
+                handle = new AssetHandle<T>(this, path, null);
+                return false;
+            }
+
+            public AssetRequest<T> LoadAsync<T>(string path, Action<AssetHandle<T>> completed = null) where T : Object
+            {
+                return null;
+            }
+
+            public GameObject Instantiate(string path, Transform parent = null, bool worldPositionStays = false)
+            {
+                return null;
+            }
+
+            public bool IsLoaded(string path)
+            {
+                return assets.ContainsKey(path);
+            }
+
+            public int GetReferenceCount(string path)
+            {
+                return 0;
+            }
+
+            public List<AssetStats> GetLoadedAssetStats()
+            {
+                return new List<AssetStats>();
+            }
+
+            public void Release(string path)
+            {
+            }
+
+            public void ReleaseAll()
+            {
+                assets.Clear();
+            }
+
+            public void UnloadUnusedAssets()
+            {
+            }
+        }
     }
 }

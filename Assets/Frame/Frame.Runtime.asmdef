@@ -5,7 +5,8 @@
     "UnityEngine.UI",
     "Unity.InputSystem",
     "UniTask",
-    "endel.nativewebsocket"
+    "endel.nativewebsocket",
+    "HybridCLR.Runtime"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

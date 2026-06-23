@@ -44,9 +44,10 @@ namespace Frame.Core
         [SerializeField] private bool enableHttpService = true;
         [SerializeField] private bool enableSocketService = true;
         [SerializeField] private bool enableLocalizationService = true;
+        [SerializeField] private bool enableResourceUpdateService = true;
+        [SerializeField] private bool enableHotUpdateService = true;
 
-        [Header("Assets")]
-        [SerializeField] private AssetServiceBackend assetServiceBackend = AssetServiceBackend.Resources;
+        [Header("YooAsset")]
         [SerializeField] private string yooAssetPackageName = "DefaultPackage";
         [SerializeField] private YooAssetPlayMode yooAssetPlayMode = YooAssetPlayMode.EditorSimulate;
         [SerializeField] private string yooAssetEditorPackageRoot = string.Empty;
@@ -217,9 +218,14 @@ namespace Frame.Core
             get { return enableLocalizationService; }
         }
 
-        public AssetServiceBackend AssetServiceBackend
+        public bool EnableResourceUpdateService
         {
-            get { return assetServiceBackend; }
+            get { return enableResourceUpdateService; }
+        }
+
+        public bool EnableHotUpdateService
+        {
+            get { return enableHotUpdateService; }
         }
 
         public string YooAssetPackageName

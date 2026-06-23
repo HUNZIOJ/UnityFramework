@@ -192,7 +192,6 @@ namespace Frame.Editor
             ValidatePackage(report, "com.unity.nuget.newtonsoft-json", "Newtonsoft JSON serializer");
             ValidatePackage(report, "com.unity.inputsystem", "Input service asmdef reference");
             ValidatePackage(report, "com.cysharp.unitask", "async services");
-            ValidatePackage(report, "com.unity.addressables", "Addressables asset service integration");
             ValidatePackage(report, "com.tuyoogame.yooasset", "YooAsset asset service integration");
 
             string asmdef = ReadTextAsset("Assets/Frame/Frame.Runtime.asmdef");
@@ -219,14 +218,9 @@ namespace Frame.Editor
                 report.Warning("Frame DOTween integration asmdef not found.");
             }
 
-            if (AssetDatabase.LoadAssetAtPath<Object>("Assets/Frame/Integrations/Addressables/Frame.Addressables.asmdef") == null)
-            {
-                report.Warning("Frame Addressables integration asmdef not found. AssetServiceBackend.Addressables will not be available.");
-            }
-
             if (AssetDatabase.LoadAssetAtPath<Object>("Assets/Frame/Integrations/YooAsset/Frame.YooAsset.asmdef") == null)
             {
-                report.Warning("Frame YooAsset integration asmdef not found. AssetServiceBackend.YooAsset will not be available.");
+                report.Error("Frame YooAsset integration asmdef not found. YooAsset is the only supported asset backend.");
             }
         }
 

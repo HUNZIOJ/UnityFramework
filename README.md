@@ -4,7 +4,7 @@
 
 - **Unity 版本**：6000.5.0f1（URP）
 - **渲染管线**：Universal Render Pipeline (URP 17.5.0)
-- **核心依赖**：Input System 1.19、Newtonsoft.Json 3.2、Addressables 3.1、YooAsset、HybridCLR、NativeWebSocket、DOTween（第三方目录）
+- **核心依赖**：Input System 1.19、Newtonsoft.Json 3.2、YooAsset、HybridCLR、NativeWebSocket、DOTween（第三方目录）
 
 框架代码与业务代码严格分层：`Assets/Frame` 只放可复用框架，`Assets/Game` 放具体游戏业务。业务层统一通过接口（`IEventBus`、`ITimerService`、`IAssetService`、`IUIService`、`IGuideService`、`ISaveService`、`IHttpService`、`ISocketService` 等）使用框架，不依赖具体实现。
 
@@ -73,7 +73,7 @@ Framework/
 │  ├─ Frame/                 # 通用框架，只放可复用底座、适配层、示例和编辑器工具
 │  │  ├─ Runtime/            # 运行时程序集 Frame.Runtime
 │  │  ├─ Editor/             # 编辑器程序集 Frame.Editor（仅 Editor）
-│  │  ├─ Integrations/       # 可选集成（Addressables / YooAsset / DOTween）
+│  │  ├─ Integrations/       # 可选集成（YooAsset / DOTween）
 │  │  ├─ Samples/            # 调用示例
 │  │  ├─ README.md           # 框架说明
 │  │  └─ FRAMEWORK_DEEP_DIVE.md
@@ -116,7 +116,7 @@ Framework/
 | Events | `Frame.Events` | `IEventBus` | 类型安全事件总线 |
 | Time | `Frame.Timing` | `ITimerService` | Update 驱动定时器 |
 | Pooling | `Frame.Pooling` | `IPoolService` | 对象池 / GameObject 池 |
-| Assets | `Frame.Assets` | `IAssetService` | 资源加载抽象（Resources / Addressables / YooAsset） |
+| Assets | `Frame.Assets` | `IAssetService` | YooAsset 资源加载抽象 |
 | Scenes | `Frame.Scenes` | `ISceneService` | SceneManager 封装 |
 | UI | `Frame.UI` | `IUIService` | UGUI 分层、路由、返回栈、模态 |
 | Guide | `Frame.Runtime.Guide` | `IGuideService` | 新手引导、镂空遮罩 |
@@ -145,7 +145,7 @@ Framework/
 - `GameEntry`：Unity 生命周期入口，驱动模块 `Tick`、暂停、焦点、退出。
 - `ModuleManager`：按优先级初始化、按倒序销毁模块。
 - `ServiceRegistry`：轻量服务定位器。
-- `IFrameModuleInstaller`：可选集成（Addressables / YooAsset / DOTween）的安装扩展点。
+- `IFrameModuleInstaller`：可选集成（YooAsset / DOTween）的安装扩展点。
 - `FrameSettings`：ScriptableObject 配置，控制启用哪些模块。
 - `FrameLog`：统一日志入口，支持级别过滤与缓冲。
 
@@ -177,7 +177,7 @@ Framework/
 
 ### Assets 资源加载
 
-`Frame.Assets` —— 资源加载抽象层，默认 `Resources` 实现，可通过 `FrameSettings.AssetServiceBackend` 切换到 Addressables 或 YooAsset。统一暴露 `IAssetService`、引用计数、异步请求状态 / 取消、资源诊断。资源句柄 `AssetHandle` 使用 `Dispose` 释放。
+`Frame.Assets` —— YooAsset 资源加载抽象层。统一暴露 `IAssetService`、引用计数、异步请求状态 / 取消、资源诊断。资源句柄 `AssetHandle` 使用 `Dispose` 释放。
 
 📖 用法示例：[Assets/Frame/Runtime/Assets/example/README.md](Assets/Frame/Runtime/Assets/example/README.md)
 
@@ -272,10 +272,6 @@ Framework/
 ### Integrations 集成层
 
 `Assets/Frame/Integrations` 下是可选的程序集，通过 `IFrameModuleInstaller` 在框架初始化时按 `FrameSettings` 注册：
-
-- **Addressables**（`Frame.Addressables`）：把 Unity Addressables 适配成 `IAssetService`。
-
-  📖 [Assets/Frame/Integrations/Addressables/example/README.md](Assets/Frame/Integrations/Addressables/example/README.md)
 
 - **YooAsset**（`Frame.YooAsset`）：把 YooAsset 适配成 `IAssetService`。
 

@@ -1,10 +1,11 @@
 {
   "name": "Frame.PlayMode.Tests",
   "rootNamespace": "Frame.Tests.PlayMode",
-  "references": [
-    "Frame.Runtime",
-    "Frame.DOTween",
-    "UniTask"
+    "references": [
+        "Frame.Runtime",
+        "Frame.YooAsset",
+        "Frame.DOTween",
+        "UniTask"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

@@ -1,8 +1,10 @@
-# Assets 模块使用示例
+# Assets Module Examples
 
-Assets 模块通过 `IAssetService` 统一封装资源加载、异步请求、实例化、引用计数和加载统计。默认实现是 `ResourcesAssetService`，也可以通过集成模块切换到 Addressables 或 YooAsset。
+The Assets module exposes `IAssetService` as the single resource loading API. This project only supports the YooAsset backend.
 
-## 命名空间
+Keep `Assets/Frame/Integrations/YooAsset/Frame.YooAsset.asmdef` in the project. `YooAssetModuleInstaller` registers `YooAssetAssetService` during framework startup when `FrameSettings.EnableAssetService` is enabled.
+
+## Namespace
 
 ```csharp
 using Frame.Assets;
@@ -10,28 +12,25 @@ using Frame.Core;
 using UnityEngine;
 ```
 
-## 获取服务
+## Resolve Service
 
 ```csharp
 IAssetService assets = Framework.Resolve<IAssetService>();
 ```
 
-## Resources 路径规则
+## YooAsset Locations
 
-默认后端使用 Unity `Resources`。路径不带扩展名，不包含 `Resources/` 之前的目录。
-
-这些路径会被标准化成同一个 key：
+Paths are YooAsset locations. The framework only normalizes slashes and trims whitespace; it does not remove file extensions and does not strip `Resources/` prefixes.
 
 ```text
-Assets/Game/Resources/UI/MainMenu.prefab -> UI/MainMenu
-Resources\Configs/player.json           -> Configs/player
-UI/MainMenu.prefab                       -> UI/MainMenu
+UI\MainMenu.prefab                       -> UI/MainMenu.prefab
+Assets/Game/Resources/UI/MainMenu.prefab -> Assets/Game/Resources/UI/MainMenu.prefab
 ```
 
-## 同步加载
+## Synchronous Load
 
 ```csharp
-using (AssetHandle<TextAsset> handle = assets.Load<TextAsset>("Configs/player"))
+using (AssetHandle<TextAsset> handle = assets.Load<TextAsset>("Configs/player.json"))
 {
     if (!handle.IsValid)
     {
@@ -43,14 +42,10 @@ using (AssetHandle<TextAsset> handle = assets.Load<TextAsset>("Configs/player"))
 }
 ```
 
-`AssetHandle<T>` 实现了 `IDisposable`。`Dispose()` 和 `Release()` 都会减少引用计数。
-
 ## TryLoad
 
-不希望缺失资源打印 warning 时使用 `TryLoad`：
-
 ```csharp
-if (assets.TryLoad<Sprite>("Icons/Coin", out AssetHandle<Sprite> handle))
+if (assets.TryLoad<Sprite>("Icons/Coin.png", out AssetHandle<Sprite> handle))
 {
     try
     {
@@ -63,11 +58,11 @@ if (assets.TryLoad<Sprite>("Icons/Coin", out AssetHandle<Sprite> handle))
 }
 ```
 
-## 异步加载回调
+## Async Load
 
 ```csharp
 AssetRequest<GameObject> request = assets.LoadAsync<GameObject>(
-    "UI/ShopPanel",
+    "UI/ShopPanel.prefab",
     handle =>
     {
         if (handle != null && handle.IsValid)
@@ -79,7 +74,7 @@ AssetRequest<GameObject> request = assets.LoadAsync<GameObject>(
     });
 ```
 
-`AssetRequest<T>` 可读取：
+`AssetRequest<T>` exposes:
 
 - `IsDone`
 - `IsCanceled`
@@ -89,13 +84,13 @@ AssetRequest<GameObject> request = assets.LoadAsync<GameObject>(
 - `Handle`
 - `Asset`
 
-## 协程中等待异步加载
+## Coroutine
 
 ```csharp
 private IEnumerator LoadIcon()
 {
     IAssetService assets = Framework.Resolve<IAssetService>();
-    AssetRequest<Sprite> request = assets.LoadAsync<Sprite>("Icons/Coin");
+    AssetRequest<Sprite> request = assets.LoadAsync<Sprite>("Icons/Coin.png");
 
     yield return request;
 
@@ -111,10 +106,10 @@ private IEnumerator LoadIcon()
 }
 ```
 
-## 取消异步请求
+## Cancel
 
 ```csharp
-AssetRequest<Texture2D> request = assets.LoadAsync<Texture2D>("Textures/LargePreview");
+AssetRequest<Texture2D> request = assets.LoadAsync<Texture2D>("Textures/LargePreview.png");
 
 if (shouldClose)
 {
@@ -122,33 +117,23 @@ if (shouldClose)
 }
 ```
 
-取消后请求最终会完成，`Success` 为 `false`，`Error` 通常为取消原因。
+Cancellation completes the request with `Success == false`. The YooAsset handle is released by the backend.
 
-## 实例化 Prefab
-
-```csharp
-GameObject instance = assets.Instantiate("UI/MainMenu", parentTransform);
-```
-
-实例化成功后，框架会给实例挂 `AssetInstanceLease` 并绑定加载句柄。实例销毁时会自动释放资源引用。
-
-如果实例化失败：
+## Instantiate Prefab
 
 ```csharp
-GameObject instance = assets.Instantiate("Effects/Explosion");
-if (instance == null)
-{
-    Debug.LogWarning("failed to instantiate effect");
-}
+GameObject instance = assets.Instantiate("UI/MainMenu.prefab", parentTransform);
 ```
+
+Successful instances receive `AssetInstanceLease`, which releases the underlying asset handle when the instance is destroyed.
 
 ## AssetReference
 
-`AssetReference<T>` 是可序列化的轻量路径引用，适合放在 MonoBehaviour 或 ScriptableObject 字段中。
+`AssetReference<T>` is a serializable YooAsset location wrapper.
 
 ```csharp
 [SerializeField] private AssetReference<AudioClip> clickSound =
-    new AssetReference<AudioClip>("Audio/UI/Click");
+    new AssetReference<AudioClip>("Audio/UI/Click.wav");
 
 public void Play()
 {
@@ -163,58 +148,21 @@ public void Play()
 }
 ```
 
-异步：
+## Stats And Release
 
 ```csharp
-AssetRequest<AudioClip> request = clickSound.LoadAsync(assets, handle =>
-{
-    if (handle.IsValid)
-    {
-        AudioSource.PlayClipAtPoint(handle.Asset, Vector3.zero);
-        handle.Release();
-    }
-});
-```
-
-## 查询加载状态和引用计数
-
-```csharp
-bool loaded = assets.IsLoaded("UI/MainMenu");
-int refs = assets.GetReferenceCount("UI/MainMenu");
+bool loaded = assets.IsLoaded("UI/MainMenu.prefab");
+int refs = assets.GetReferenceCount("UI/MainMenu.prefab");
 
 List<AssetStats> stats = assets.GetLoadedAssetStats();
 foreach (AssetStats item in stats)
 {
     Debug.Log(item.Path + " refs=" + item.ReferenceCount + " type=" + item.TypeName);
 }
-```
 
-## 手动释放
-
-```csharp
-AssetHandle<TextAsset> handle = assets.Load<TextAsset>("Configs/player");
-handle.Release();
-
-assets.Release("Configs/player");
+assets.Release("UI/MainMenu.prefab");
 assets.ReleaseAll();
 assets.UnloadUnusedAssets();
 ```
 
-`Release(path)` 只减少指定路径引用计数。`ReleaseAll()` 清空模块缓存。`UnloadUnusedAssets()` 调用 Unity 卸载未使用资源。
-
-## 切换资源后端
-
-在 `FrameSettings.AssetServiceBackend` 中选择：
-
-- `Resources`: 使用 `ResourcesAssetService`。
-- `Addressables`: 需要 `Frame.Addressables` 集成模块。
-- `YooAsset`: 需要 `Frame.YooAsset` 集成模块。
-
-业务代码保持依赖 `IAssetService`，不需要因为后端切换而改调用方式。
-
-## 注意事项
-
-- 同步加载会阻塞当前线程，复杂资源优先使用 `LoadAsync`。
-- 每次成功 `Load` 或 `LoadAsync` 都会增加引用计数，必须释放句柄。
-- `Instantiate` 返回的实例不要手动释放句柄，销毁实例即可。
-- `Resources` 后端路径会去掉扩展名；Addressables 和 YooAsset 后端保留地址语义，详见各自集成示例。
+YooAsset locations must match the active package manifest.

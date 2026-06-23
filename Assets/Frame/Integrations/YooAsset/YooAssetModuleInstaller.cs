@@ -1,4 +1,3 @@
-using Frame.Assets;
 using Frame.Core;
 
 namespace Frame.YooAsset
@@ -7,12 +6,20 @@ namespace Frame.YooAsset
     {
         public void Install(ModuleManager modules, FrameSettings settings)
         {
-            if (settings == null || !settings.EnableAssetService || settings.AssetServiceBackend != AssetServiceBackend.YooAsset)
+            if (settings == null)
             {
                 return;
             }
 
-            modules.Add(new YooAssetAssetService());
+            if (settings.EnableAssetService)
+            {
+                modules.Add(new YooAssetAssetService());
+            }
+
+            if (settings.EnableResourceUpdateService)
+            {
+                modules.Add(new YooAssetResourceUpdateService());
+            }
         }
     }
 }

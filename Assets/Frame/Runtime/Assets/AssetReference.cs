@@ -1,6 +1,6 @@
-using Frame.Utilities;
 using System;
 using UnityEngine;
+using UnityEngine.Serialization;
 using Object = UnityEngine.Object;
 
 namespace Frame.Assets
@@ -8,36 +8,47 @@ namespace Frame.Assets
     [System.Serializable]
     public struct AssetReference<T> where T : Object
     {
-        [SerializeField] private string resourcesPath;
+        [FormerlySerializedAs("resourcesPath")]
+        [SerializeField] private string path;
 
-        public AssetReference(string resourcesPath)
+        public AssetReference(string path)
         {
-            this.resourcesPath = FramePathUtility.NormalizeResourcesPath(resourcesPath);
+            this.path = NormalizeLocation(path);
+        }
+
+        public string Path
+        {
+            get { return NormalizeLocation(path); }
         }
 
         public string ResourcesPath
         {
-            get { return FramePathUtility.NormalizeResourcesPath(resourcesPath); }
+            get { return Path; }
         }
 
         public bool IsValid
         {
-            get { return !string.IsNullOrWhiteSpace(ResourcesPath); }
+            get { return !string.IsNullOrWhiteSpace(Path); }
         }
 
         public AssetHandle<T> Load(IAssetService assetService)
         {
-            return assetService.Load<T>(ResourcesPath);
+            return assetService.Load<T>(Path);
         }
 
         public AssetRequest<T> LoadAsync(IAssetService assetService, Action<AssetHandle<T>> completed = null)
         {
-            return assetService.LoadAsync(ResourcesPath, completed);
+            return assetService.LoadAsync(Path, completed);
         }
 
         public override string ToString()
         {
-            return ResourcesPath;
+            return Path;
+        }
+
+        private static string NormalizeLocation(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Replace('\\', '/').Trim();
         }
     }
 }

@@ -5,6 +5,7 @@ using Frame.Config;
 using Frame.Core;
 using Frame.Diagnostics;
 using Frame.Events;
+using Frame.HotUpdate;
 using Frame.Lifecycle;
 using Frame.Localization;
 using Frame.Networking;
@@ -15,6 +16,7 @@ using Frame.Save;
 using Frame.Scenes;
 using Frame.Timing;
 using Frame.UI;
+using Frame.YooAsset;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -61,6 +63,8 @@ namespace Frame.Tests.PlayMode
             Assert.IsTrue(Framework.TryResolve(out IHttpService _));
             Assert.IsTrue(Framework.TryResolve(out ISocketService _));
             Assert.IsTrue(Framework.TryResolve(out ILocalizationService _));
+            Assert.IsTrue(Framework.TryResolve(out YooAssetResourceUpdateService _));
+            Assert.IsTrue(Framework.TryResolve(out IHotUpdateService _));
 
             Framework.Start();
             Framework.Update(0.016f, 0.016f);

@@ -1,7 +1,6 @@
 using System;
 using Frame.Assets;
 using Frame.Core;
-using Frame.Utilities;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -15,7 +14,7 @@ namespace Frame.Config
         public AssetJsonConfigProvider(IAssetService assets, string rootPath = "Configs")
         {
             this.assets = assets;
-            this.rootPath = FramePathUtility.NormalizeResourcesPath(rootPath);
+            this.rootPath = NormalizeLocation(rootPath).Trim('/');
         }
 
         public bool TryLoad<TConfig>(string key, out TConfig config) where TConfig : class
@@ -59,7 +58,12 @@ namespace Frame.Config
         private string ResolvePath(string key)
         {
             string path = string.IsNullOrWhiteSpace(rootPath) ? key : rootPath + "/" + key;
-            return FramePathUtility.NormalizeResourcesPath(path);
+            return NormalizeLocation(path);
+        }
+
+        private static string NormalizeLocation(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Replace('\\', '/').Trim();
         }
     }
 }

@@ -194,7 +194,7 @@ modules.ShutdownAll();
 - `RunInBackground`: 是否后台运行。
 - `TargetFrameRate`: 目标帧率，`0` 表示不设置。
 - `Enable*Service`: 控制默认模块是否注册。
-- `AssetServiceBackend`: 选择 `Resources`、`Addressables` 或 `YooAsset`。
+- YooAsset 相关字段：包名、运行模式、内置包根、远端地址和下载参数。
 - `EnableRuntimeDiagnosticsOverlay`: 是否启用运行时诊断面板。
 - `UIReferenceResolution`、`UIMatchWidthOrHeight`: UGUI 根节点缩放配置。
 - `AudioSourcePoolSize`、音频 Mixer 配置: 控制音频服务。

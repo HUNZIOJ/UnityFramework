@@ -76,9 +76,9 @@ FrameMenuItems.ValidateProject();
 - UI 参考分辨率、音频池大小、GameObject 池默认大小是否有效。
 - 当前场景 `GameEntry` 数量。
 - Build Settings 场景是否存在且至少一个启用。
-- 必要包是否存在：Newtonsoft Json、Input System、UniTask、Addressables、YooAsset。
+- 必要包是否存在：Newtonsoft Json、Input System、UniTask、YooAsset。
 - `Frame.Runtime.asmdef` 是否引用 `UnityEngine.UI`、`Unity.InputSystem`、`UniTask`。
-- DOTween、Addressables、YooAsset 集成 asmdef 是否存在。
+- DOTween、YooAsset 集成 asmdef 是否存在。
 - Resources 路径是否重复。
 - `Resources/UI/*.prefab` 是否包含 `UIPanelBase`。
 - `Resources/Configs/*.json` 是否为合法 JSON。

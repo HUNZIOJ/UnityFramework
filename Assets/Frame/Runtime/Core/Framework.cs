@@ -1,4 +1,3 @@
-using Frame.Assets;
 using Frame.Audio;
 using Frame.Config;
 using Frame.Diagnostics;
@@ -6,6 +5,7 @@ using Frame.Events;
 using Frame.Input;
 using Frame.Lifecycle;
 using Frame.Localization;
+using Frame.HotUpdate;
 using Frame.Networking;
 using Frame.Pooling;
 using Frame.Preferences;
@@ -248,14 +248,6 @@ namespace Frame.Core
                 modules.Add(new PoolService());
             }
 
-            if (settings.EnableAssetService)
-            {
-                if (settings.AssetServiceBackend == AssetServiceBackend.Resources)
-                {
-                    modules.Add(new ResourcesAssetService());
-                }
-            }
-
             if (settings.EnableSceneService)
             {
                 modules.Add(new SceneService());
@@ -304,6 +296,11 @@ namespace Frame.Core
             if (settings.EnableLocalizationService)
             {
                 modules.Add(new LocalizationService());
+            }
+
+            if (settings.EnableHotUpdateService)
+            {
+                modules.Add(new HybridCLRHotUpdateService());
             }
         }
 

@@ -18,7 +18,7 @@
 
 上线前建议补齐：
 
-- 按项目选择 Addressables 或 YooAsset，并补齐对应的资源分组、构建和远程发布流程。
+- 使用 YooAsset，并补齐资源分组、构建和远程发布流程。
 - 云存档、资源热更新、配置远程灰度和统一网络协议。
 - 网络统一协议、鉴权刷新、错误码和埋点。
 - 配置校验、热更新或远程配置。
@@ -49,7 +49,6 @@ Assets/Frame
   Runtime/Localization          Excel/CSV 风格多语言文本表
   Runtime/StateMachine          通用状态机
   Runtime/Utilities             路径、释放等工具
-  Integrations/Addressables     Addressables 对 IAssetService 的实现
   Integrations/YooAsset         YooAsset 对 IAssetService 的实现
   Integrations/DOTween          DOTween 对 ITweenService 的实现
   Editor                        编辑器菜单和校验工具
@@ -87,7 +86,7 @@ ITimerService timers = Framework.Resolve<ITimerService>();
 - `Diagnostics`：运行时日志缓冲、日志事件、日志文件落盘、FPS/内存/错误计数快照和可选 IMGUI 调试面板。
 - `Time`：支持缩放/非缩放延迟、循环定时器、owner 批量取消和运行时计时器统计。
 - `Pooling`：`ObjectPool<T>` 面向纯 C# 对象，`GameObjectPool` 面向 prefab 实例，支持预热、统计和清理。
-- `Assets`：默认使用 `Resources`，也提供 Addressables 和 YooAsset 集成；通过 `FrameSettings.AssetServiceBackend` 切换，统一暴露 `IAssetService`、引用计数、异步请求状态/取消和资源诊断。
+- `Assets`：使用 YooAsset 集成，统一暴露 `IAssetService`、引用计数、异步请求状态/取消和资源诊断。
 - `Scenes`：封装同步加载、异步加载、卸载、Build Settings 校验、加载状态/事件、手动激活和进度回调。
 - `UI`：自动创建 UGUI root，内置分层、`UIPanelBase` 生命周期、路由、返回栈、模态遮罩、弹窗队列、异步打开、强类型参数和淡入淡出动画扩展点。
 - `Guide`：基于 `GuideConfig` 和 `GuideTarget` 的新手引导服务，支持矩形、圆角矩形、圆形、椭圆镂空遮罩，支持点击目标、点击任意处、自定义事件三类推进方式，可配置自定义提示框 prefab，并按 `GuideGroupId` 持久化步骤进度。
