@@ -30,16 +30,20 @@ MonoBehaviour:
   enableAssetService: 1
   enableSceneService: 1
   enableUIService: 1
+  enableGuideService: 1
   enableAudioService: 1
   enableTweenService: 1
   enableSaveService: 1
   enableConfigService: 1
   enableInputService: 1
   enableHttpService: 1
+  enableSocketService: 1
   enableLocalizationService: 1
+  enableResourceUpdateService: 1
+  enableHotUpdateService: 1
   yooAssetPackageName: DefaultPackage
   yooAssetPlayMode: 0
-  yooAssetEditorPackageRoot: 
+  yooAssetEditorPackageRoot: Assets/Art
   yooAssetBuiltinPackageRoot: 
   yooAssetDefaultHostServer: 
   yooAssetFallbackHostServer: 
