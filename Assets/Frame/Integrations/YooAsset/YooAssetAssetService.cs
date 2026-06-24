@@ -304,28 +304,53 @@ namespace Frame.YooAsset
                     ownsPackage = true;
                 }
 
-                if (package.InitializeStatus == YooAssetRuntime.EOperationStatus.Succeeded)
-                {
-                    packageReady = true;
-                    return;
-                }
-
-                YooAssetRuntime.InitializePackageOptions options = CreateInitializeOptions(settings);
-                YooAssetRuntime.InitializePackageOperation operation = package.InitializePackageAsync(options);
-                while (!operation.IsDone)
+                while (package.InitializeStatus == YooAssetRuntime.EOperationStatus.Processing)
                 {
                     await UniTask.Yield(PlayerLoopTiming.Update, cancellationToken);
                 }
 
-                if (operation.Status == YooAssetRuntime.EOperationStatus.Succeeded)
+                if (package.InitializeStatus != YooAssetRuntime.EOperationStatus.Succeeded)
+                {
+                    YooAssetRuntime.InitializePackageOptions options = CreateInitializeOptions(settings);
+                    YooAssetRuntime.InitializePackageOperation initializeOperation = package.InitializePackageAsync(options);
+                    await WaitYooOperation(initializeOperation, cancellationToken);
+                    if (initializeOperation.Status != YooAssetRuntime.EOperationStatus.Succeeded)
+                    {
+                        packageReady = false;
+                        FrameLog.Warning("YooAsset package initialization failed: " + packageName + " error=" + initializeOperation.Error);
+                        return;
+                    }
+                }
+
+                if (package.PackageValid)
                 {
                     packageReady = true;
-                    FrameLog.Info("YooAsset package initialized: " + packageName + " mode=" + settings.YooAssetPlayMode);
+                    FrameLog.Info("YooAsset package initialized: " + packageName + " version=" + package.GetPackageVersion() + " mode=" + settings.YooAssetPlayMode);
+                    return;
+                }
+
+                YooAssetRuntime.RequestPackageVersionOperation versionOperation = package.RequestPackageVersionAsync(
+                    new YooAssetRuntime.RequestPackageVersionOptions(true, 60));
+                await WaitYooOperation(versionOperation, cancellationToken);
+                if (versionOperation.Status != YooAssetRuntime.EOperationStatus.Succeeded)
+                {
+                    packageReady = false;
+                    FrameLog.Warning("YooAsset package version request failed: " + packageName + " error=" + versionOperation.Error);
+                    return;
+                }
+
+                YooAssetRuntime.LoadPackageManifestOperation manifestOperation = package.LoadPackageManifestAsync(
+                    new YooAssetRuntime.LoadPackageManifestOptions(versionOperation.PackageVersion, 60));
+                await WaitYooOperation(manifestOperation, cancellationToken);
+                if (manifestOperation.Status == YooAssetRuntime.EOperationStatus.Succeeded)
+                {
+                    packageReady = true;
+                    FrameLog.Info("YooAsset package initialized: " + packageName + " version=" + versionOperation.PackageVersion + " mode=" + settings.YooAssetPlayMode);
                 }
                 else
                 {
                     packageReady = false;
-                    FrameLog.Warning("YooAsset package initialization failed: " + packageName + " error=" + operation.Error);
+                    FrameLog.Warning("YooAsset package manifest load failed: " + packageName + " error=" + manifestOperation.Error);
                 }
             }
             catch (OperationCanceledException)
@@ -373,6 +398,14 @@ namespace Frame.YooAsset
             return EnsurePackageReady();
         }
 
+        private static async UniTask WaitYooOperation(YooAssetRuntime.AsyncOperationBase operation, CancellationToken cancellationToken)
+        {
+            while (!operation.IsDone)
+            {
+                await UniTask.Yield(PlayerLoopTiming.Update, cancellationToken);
+            }
+        }
+
         private static YooAssetRuntime.InitializePackageOptions CreateInitializeOptions(FrameSettings settings)
         {
             YooAssetRuntime.InitializePackageOptions options;
@@ -380,8 +413,18 @@ namespace Frame.YooAsset
             {
                 case YooAssetPlayMode.EditorSimulate:
 #if UNITY_EDITOR
+                    string packageName = settings.YooAssetPackageName;
+                    string editorPackageRoot = settings.YooAssetEditorPackageRoot;
+                    if (string.IsNullOrWhiteSpace(editorPackageRoot))
+                    {
+                        YooAssetRuntime.PackageBuildResult buildResult = YooAssetRuntime.EditorSimulateBuildInvoker.Build(
+                            packageName,
+                            (int)YooAssetRuntime.EBundleType.VirtualAssetBundle);
+                        editorPackageRoot = buildResult.PackageRootDirectory;
+                    }
+
                     YooAssetRuntime.EditorSimulateModeOptions editorOptions = new YooAssetRuntime.EditorSimulateModeOptions();
-                    editorOptions.EditorFileSystemParameters = YooAssetRuntime.FileSystemParameters.CreateDefaultEditorFileSystemParameters(settings.YooAssetEditorPackageRoot);
+                    editorOptions.EditorFileSystemParameters = YooAssetRuntime.FileSystemParameters.CreateDefaultEditorFileSystemParameters(editorPackageRoot);
                     options = editorOptions;
                     break;
 #else

@@ -237,9 +237,11 @@ Installer 会在启用 AssetService 时添加 `YooAssetAssetService`，在启用
 1. 确保 `YooAssets.Initialize()` 已执行。
 2. 获取或创建配置的 package。
 3. 根据 `YooAssetPlayMode` 创建初始化选项。
-4. 同步等待 `InitializePackageAsync` 完成。
+4. 异步等待 `InitializePackageAsync` 完成。
+5. 按 YooAsset 运行时初始化流程请求资源版本。
+6. 加载对应版本的资源清单，成功后才标记 package ready。
 
-`YooAssetResourceUpdateService` 初始化时只注册服务，不创建 package。它依赖 `YooAssetAssetService` 已经完成 YooAsset 和 package 初始化；如果 package 不存在或初始化失败，检查/更新操作会返回失败结果。
+`YooAssetResourceUpdateService` 初始化时只注册服务，不创建 package。它依赖 `YooAssetAssetService` 已经完成 YooAsset package 初始化、版本请求和清单加载；如果 package 不存在或初始化失败，检查/更新操作会返回失败结果。资源下载、缓存清理和补丁更新仍由 `YooAssetResourceUpdateService` 负责。
 
 ## 注意事项
 

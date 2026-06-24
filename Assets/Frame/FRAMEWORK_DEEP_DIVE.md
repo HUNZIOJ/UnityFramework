@@ -1038,7 +1038,7 @@ AssetRequest<GameObject> load = reference.LoadAsync(assets);
 | `IAssetService` | 资源服务接口 | 加载、异步加载、实例化、引用计数、统计、释放 |
 | `ResourcesAssetService` | Resources 实现 | 路径归一化、缓存、引用计数、异步请求、卸载未使用资源 |
 | `AddressablesAssetService` | Addressables 实现 | address 缓存、Addressables handle 引用计数、异步进度和取消 |
-| `YooAssetAssetService` | YooAsset 实现 | package 初始化、location 缓存、YooAsset handle 引用计数、Host/Web 远端 URL |
+| `YooAssetAssetService` | YooAsset 实现 | package 初始化、资源版本请求、资源清单加载、location 缓存、YooAsset handle 引用计数、Host/Web 远端 URL |
 | `AssetHandle<T>` | 资源句柄 | 保存资源、路径和 owner，`Dispose/Release` 减引用 |
 | `AssetRequest<T>` | 异步资源请求 | 可 `yield return`，有完成、取消、进度、错误、句柄 |
 | `AssetReference<T>` | 可序列化资源引用值 | 封装 Resources 路径，提供 Load/LoadAsync |
@@ -1174,9 +1174,9 @@ AssetRequest<GameObject> load = reference.LoadAsync(assets);
 | 成员 | 作用 | 实现方式 | 使用方式和注意点 |
 | --- | --- | --- | --- |
 | `Priority` | 模块优先级 | 返回 `-600` | 与默认资源服务一致 |
-| `OnInitialize()` | 注册服务并初始化 YooAsset package | 如果 `YooAssets` 未初始化则调用 `YooAssets.Initialize()`；创建或获取 `FrameSettings.YooAssetPackageName`；按 `YooAssetPlayMode` 创建初始化参数并 `WaitForCompletion()` | 只负责 package 初始化，不负责完整补丁流程 |
+| `OnInitialize()` | 注册服务并启动 YooAsset package 初始化 | 如果 `YooAssets` 未初始化则调用 `YooAssets.Initialize()`；创建或获取 `FrameSettings.YooAssetPackageName`；按 `YooAssetPlayMode` 创建初始化参数，异步执行 `InitializePackageAsync`、`RequestPackageVersionAsync` 和 `LoadPackageManifestAsync` | 版本和清单加载成功后才标记 ready；资源下载和补丁更新仍由 `YooAssetResourceUpdateService` 负责 |
 | `Load<T>(string path)` | 同步加载 | path 只做 trim 和反斜杠替换；缓存命中 AddRef；缓存 miss 时 `package.LoadAssetSync<T>(path)` | path 是 YooAsset location |
-| `LoadAsync<T>(...)` | 异步加载 | `package.LoadAssetAsync<T>(path)`；循环读取 `Progress`；取消时释放 YooAsset handle | 成功后保存 YooAsset handle 到缓存 |
+| `LoadAsync<T>(...)` | 异步加载 | 如果 package 正在初始化则等待 ready；之后调用 `package.LoadAssetAsync<T>(path)`；循环读取 `Progress`；取消时释放 YooAsset handle | 成功后保存 YooAsset handle 到缓存 |
 | `Instantiate(...)` | 实例化 prefab | `Load<GameObject>` 后 Unity Instantiate，并绑定 `AssetInstanceLease` | 实例销毁才释放资源引用 |
 | `Release(string path)` | 释放一次引用 | 引用计数归零时调用 YooAsset handle `Release()` | 配合 YooAsset 的包/Bundle 引用计数 |
 | `ReleaseAll()` | 释放全部缓存 | 遍历缓存释放 YooAsset handle | 切场景前可显式调用 |
