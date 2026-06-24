@@ -38,7 +38,7 @@ MonoBehaviour:
   enableHttpService: 1
   enableLocalizationService: 1
   yooAssetPackageName: DefaultPackage
-  yooAssetPlayMode: 2
+  yooAssetPlayMode: 0
   yooAssetEditorPackageRoot: 
   yooAssetBuiltinPackageRoot: 
   yooAssetDefaultHostServer: 

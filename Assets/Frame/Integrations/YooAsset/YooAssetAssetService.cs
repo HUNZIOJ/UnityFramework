@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using Frame.Assets;
 using Frame.Core;
@@ -16,6 +17,8 @@ namespace Frame.YooAsset
         private bool ownsYooAssets;
         private bool ownsPackage;
         private bool packageReady;
+        private bool packageInitializing;
+        private CancellationTokenSource initializeCancellation;
 
         public override int Priority
         {
@@ -26,15 +29,8 @@ namespace Frame.YooAsset
         {
             Context.Services.Register<IAssetService>(this);
             Context.Services.Register(this);
-            try
-            {
-                InitializePackage();
-            }
-            catch (Exception exception)
-            {
-                packageReady = false;
-                FrameLog.Exception(exception);
-            }
+            initializeCancellation = new CancellationTokenSource();
+            InitializePackageAsync(initializeCancellation.Token).Forget();
         }
 
         public AssetHandle<T> Load<T>(string path) where T : Object
@@ -179,6 +175,14 @@ namespace Frame.YooAsset
 
         protected override void OnShutdown()
         {
+            if (initializeCancellation != null)
+            {
+                initializeCancellation.Cancel();
+                initializeCancellation.Dispose();
+                initializeCancellation = null;
+            }
+
+            packageInitializing = false;
             ReleaseAll();
 
             if (ownsPackage && package != null && package.InitializeStatus != YooAssetRuntime.EOperationStatus.None)
@@ -217,10 +221,10 @@ namespace Frame.YooAsset
                 return;
             }
 
-            if (!EnsurePackageReady())
+            if (!await WaitForPackageReadyAsync(request))
             {
-                AssetHandle<T> empty = new AssetHandle<T>(this, path, null);
-                CompleteRequest(request, empty, completed, "YooAsset package is not ready.");
+                AssetHandle<T> failed = new AssetHandle<T>(this, path, null);
+                CompleteRequest(request, failed, completed, request.IsCanceled ? "Request canceled." : "YooAsset package is not ready.");
                 return;
             }
 
@@ -280,42 +284,62 @@ namespace Frame.YooAsset
             CompleteRequest(request, handle, completed, error);
         }
 
-        private void InitializePackage()
+        private async UniTaskVoid InitializePackageAsync(CancellationToken cancellationToken)
         {
-            FrameSettings settings = Context.Settings;
-            string packageName = settings.YooAssetPackageName;
-
-            if (!YooAssetRuntime.YooAssets.IsInitialized)
+            packageInitializing = true;
+            try
             {
-                YooAssetRuntime.YooAssets.Initialize();
-                ownsYooAssets = true;
-            }
+                FrameSettings settings = Context.Settings;
+                string packageName = settings.YooAssetPackageName;
 
-            if (!YooAssetRuntime.YooAssets.TryGetPackage(packageName, out package))
-            {
-                package = YooAssetRuntime.YooAssets.CreatePackage(packageName);
-                ownsPackage = true;
-            }
+                if (!YooAssetRuntime.YooAssets.IsInitialized)
+                {
+                    YooAssetRuntime.YooAssets.Initialize();
+                    ownsYooAssets = true;
+                }
 
-            if (package.InitializeStatus == YooAssetRuntime.EOperationStatus.Succeeded)
-            {
-                packageReady = true;
-                return;
-            }
+                if (!YooAssetRuntime.YooAssets.TryGetPackage(packageName, out package))
+                {
+                    package = YooAssetRuntime.YooAssets.CreatePackage(packageName);
+                    ownsPackage = true;
+                }
 
-            YooAssetRuntime.InitializePackageOptions options = CreateInitializeOptions(settings);
-            YooAssetRuntime.InitializePackageOperation operation = package.InitializePackageAsync(options);
-            operation.WaitForCompletion();
+                if (package.InitializeStatus == YooAssetRuntime.EOperationStatus.Succeeded)
+                {
+                    packageReady = true;
+                    return;
+                }
 
-            if (operation.Status == YooAssetRuntime.EOperationStatus.Succeeded)
-            {
-                packageReady = true;
-                FrameLog.Info("YooAsset package initialized: " + packageName + " mode=" + settings.YooAssetPlayMode);
+                YooAssetRuntime.InitializePackageOptions options = CreateInitializeOptions(settings);
+                YooAssetRuntime.InitializePackageOperation operation = package.InitializePackageAsync(options);
+                while (!operation.IsDone)
+                {
+                    await UniTask.Yield(PlayerLoopTiming.Update, cancellationToken);
+                }
+
+                if (operation.Status == YooAssetRuntime.EOperationStatus.Succeeded)
+                {
+                    packageReady = true;
+                    FrameLog.Info("YooAsset package initialized: " + packageName + " mode=" + settings.YooAssetPlayMode);
+                }
+                else
+                {
+                    packageReady = false;
+                    FrameLog.Warning("YooAsset package initialization failed: " + packageName + " error=" + operation.Error);
+                }
             }
-            else
+            catch (OperationCanceledException)
             {
                 packageReady = false;
-                FrameLog.Warning("YooAsset package initialization failed: " + packageName + " error=" + operation.Error);
+            }
+            catch (Exception exception)
+            {
+                packageReady = false;
+                FrameLog.Exception(exception);
+            }
+            finally
+            {
+                packageInitializing = false;
             }
         }
 
@@ -328,10 +352,25 @@ namespace Frame.YooAsset
 
             if (logWarnings)
             {
-                FrameLog.Warning("YooAsset package is not ready.");
+                FrameLog.Warning(packageInitializing ? "YooAsset package is still initializing." : "YooAsset package is not ready.");
             }
 
             return false;
+        }
+
+        private async UniTask<bool> WaitForPackageReadyAsync<T>(AssetRequest<T> request) where T : Object
+        {
+            while (packageInitializing)
+            {
+                if (request.IsCanceled)
+                {
+                    return false;
+                }
+
+                await UniTask.Yield(PlayerLoopTiming.Update);
+            }
+
+            return EnsurePackageReady();
         }
 
         private static YooAssetRuntime.InitializePackageOptions CreateInitializeOptions(FrameSettings settings)
